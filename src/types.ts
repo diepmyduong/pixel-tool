@@ -122,6 +122,8 @@ export interface VideoAnimation {
   loop: boolean
   rawVideoBlob: Blob
   createdAt: number
+  sheetMargin?: number
+  frameOffsets?: { x: number; y: number }[]
 }
 
 /**

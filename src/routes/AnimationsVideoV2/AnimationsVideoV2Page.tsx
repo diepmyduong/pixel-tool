@@ -7,9 +7,10 @@ import VideoV2GeneratePanel from './VideoV2GeneratePanel'
 import VideoV2History from './VideoV2History'
 import VideoV2FrameCutter, { type CutFrame } from './VideoV2FrameCutter'
 import VideoV2KeyTuner from './VideoV2KeyTuner'
+import VideoV2SpriteSheetEditor from './VideoV2SpriteSheetEditor'
 import VideoV2Gallery from './VideoV2Gallery'
 
-type Step = 'cut' | 'tune'
+type Step = 'cut' | 'tune' | 'sheet'
 
 interface SetupSnapshot {
   characterId: string | null
@@ -47,6 +48,10 @@ export default function AnimationsVideoV2Page() {
   const [frameDurationSeconds, setFrameDurationSeconds] = useState(0.1)
   const [loop, setLoop] = useState(true)
   const [step, setStep] = useState<Step>('cut')
+
+  const [sheetFrames, setSheetFrames] = useState<CutFrame[]>([])
+  const [sheetMargin, setSheetMargin] = useState(4)
+  const [sheetFrameOffsets, setSheetFrameOffsets] = useState<{ x: number; y: number }[]>([])
 
   useEffect(() => {
     if (!characterId) {
@@ -128,8 +133,18 @@ export default function AnimationsVideoV2Page() {
     setLoop(nextLoop)
   }
 
-  async function handleSave(frames: CutFrame[]) {
-    if ((!setupSnapshot?.characterId && !setupSnapshot?.referenceImageFile) || !rawVideoBlob || frames.length === 0)
+  function handleTuneContinue(frames: CutFrame[]) {
+    setSheetFrames(frames)
+    setSheetFrameOffsets(frames.map(() => ({ x: 0, y: 0 })))
+    setStep('sheet')
+  }
+
+  async function handleSave() {
+    if (
+      (!setupSnapshot?.characterId && !setupSnapshot?.referenceImageFile) ||
+      !rawVideoBlob ||
+      sheetFrames.length === 0
+    )
       return
 
     const animation: VideoAnimation = {
@@ -139,24 +154,29 @@ export default function AnimationsVideoV2Page() {
       state: setupSnapshot.state,
       groupName: setupSnapshot.groupName.trim() || undefined,
       actionDescription: setupSnapshot.actionDescription,
-      frameBlobs: frames.map((f) => f.keyedBlob),
-      frameTimestamps: frames.map((f) => f.timestamp),
+      frameBlobs: sheetFrames.map((f) => f.keyedBlob),
+      frameTimestamps: sheetFrames.map((f) => f.timestamp),
       frameDurationSeconds,
       loop,
       rawVideoBlob,
       createdAt: Date.now(),
+      sheetMargin,
+      frameOffsets: sheetFrameOffsets,
     }
     await saveVideoAnimation(animation)
 
-    // Safe to revoke: the tuner disables Save until its first re-key lands,
-    // by which point `frames` (its keyedFrames) holds URLs the tuner created
-    // itself, not the cutter's — so this never touches the still-mounted
-    // cutter's <img> URLs.
-    frames.forEach((f) => URL.revokeObjectURL(f.url))
+    // Safe to revoke: the tuner disables Continue until its first re-key
+    // lands, by which point `sheetFrames` (its keyedFrames, threaded through
+    // unchanged by the sheet editor) holds URLs the tuner created itself, not
+    // the cutter's — so this never touches the still-mounted cutter's <img> URLs.
+    sheetFrames.forEach((f) => URL.revokeObjectURL(f.url))
     setRawVideoUrl(null)
     setRawVideoBlob(null)
     setSetupSnapshot(null)
     setCutFrames([])
+    setSheetFrames([])
+    setSheetFrameOffsets([])
+    setSheetMargin(4)
     setStep('cut')
     setRefreshKey((k) => k + 1)
     message.success('Animation saved')
@@ -225,6 +245,21 @@ export default function AnimationsVideoV2Page() {
               loop={loop}
               onLoopChange={setLoop}
               onBack={() => setStep('cut')}
+              onContinue={handleTuneContinue}
+            />
+          )}
+          {rawVideoUrl && step === 'sheet' && (
+            <VideoV2SpriteSheetEditor
+              frames={sheetFrames}
+              margin={sheetMargin}
+              onMarginChange={setSheetMargin}
+              frameOffsets={sheetFrameOffsets}
+              onFrameOffsetsChange={setSheetFrameOffsets}
+              frameDurationSeconds={frameDurationSeconds}
+              onFrameDurationSecondsChange={setFrameDurationSeconds}
+              loop={loop}
+              onLoopChange={setLoop}
+              onBack={() => setStep('tune')}
               onSave={handleSave}
             />
           )}

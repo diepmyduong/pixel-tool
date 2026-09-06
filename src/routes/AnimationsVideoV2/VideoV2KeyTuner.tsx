@@ -15,7 +15,7 @@ interface VideoV2KeyTunerProps {
   loop: boolean
   onLoopChange: (value: boolean) => void
   onBack: () => void
-  onSave: (frames: CutFrame[]) => void
+  onContinue: (frames: CutFrame[]) => void
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -55,7 +55,7 @@ export default function VideoV2KeyTuner({
   loop,
   onLoopChange,
   onBack,
-  onSave,
+  onContinue,
 }: VideoV2KeyTunerProps) {
   const [inner, setInner] = useState(DEFAULT_INNER)
   const [outer, setOuter] = useState(DEFAULT_OUTER)
@@ -179,9 +179,9 @@ export default function VideoV2KeyTuner({
           <Button
             type="primary"
             disabled={rekeying || !hasRekeyed || keyedFrames.length === 0}
-            onClick={() => onSave(keyedFrames)}
+            onClick={() => onContinue(keyedFrames)}
           >
-            Save animation
+            Continue to Sprite Sheet Editor
           </Button>
         </Space>
       </Space>
