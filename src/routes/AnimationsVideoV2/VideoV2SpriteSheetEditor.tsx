@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Card, Slider, Space, Typography } from 'antd'
 import type { CutFrame } from './VideoV2FrameCutter'
-import { VIDEO_SHEET_FRAME_SIZE, fitFrameWithOffset, loadFrameCanvas } from '../../lib/videoSpriteSheet'
+import {
+  VIDEO_SHEET_FRAME_SIZE,
+  composeFrameStrip,
+  downloadFrameStrip,
+  fitFrameWithOffset,
+  loadFrameCanvas,
+} from '../../lib/videoSpriteSheet'
 import VideoV2Preview from './VideoV2Preview'
 
 const CELL_DISPLAY_SIZE = 140
@@ -128,6 +134,7 @@ export default function VideoV2SpriteSheetEditor({
 }: VideoV2SpriteSheetEditorProps) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
+  const [exporting, setExporting] = useState(false)
 
   // Re-render the preview strip's frame URLs whenever margin/offsets change,
   // so VideoV2Preview shows the edited (not raw) frames.
@@ -183,6 +190,23 @@ export default function VideoV2SpriteSheetEditor({
     onFrameOffsetsChange(frames.map(() => ({ ...current })))
   }
 
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const canvases = await Promise.all(
+        frames.map(async (frame, i) => {
+          const source = await loadFrameCanvas(frame.keyedBlob)
+          const offset = offsets[i]
+          return fitFrameWithOffset(source, VIDEO_SHEET_FRAME_SIZE, margin, offset.x, offset.y)
+        }),
+      )
+      const blob = await composeFrameStrip(canvases)
+      downloadFrameStrip(blob, `animation_sheet_${Date.now()}.png`)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <Card title="Sprite Sheet Editor">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -206,6 +230,9 @@ export default function VideoV2SpriteSheetEditor({
           <Typography.Text>Drag a frame below to reposition its character.</Typography.Text>
           <Button size="small" onClick={handleApplyToAll}>
             Apply frame {activeIndex + 1}'s position to all
+          </Button>
+          <Button size="small" loading={exporting} onClick={handleExport}>
+            Export Sprite Sheet ({frames.length} x {VIDEO_SHEET_FRAME_SIZE}px)
           </Button>
         </Space>
 
