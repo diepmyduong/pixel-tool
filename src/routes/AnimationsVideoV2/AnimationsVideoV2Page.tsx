@@ -17,6 +17,7 @@ interface SetupSnapshot {
   state: StateGroup
   groupName: string
   actionDescription: string
+  referenceImageFile: File | null
 }
 
 export default function AnimationsVideoV2Page() {
@@ -24,6 +25,8 @@ export default function AnimationsVideoV2Page() {
   const [character, setCharacter] = useState<Character | null>(null)
   const [itemIds, setItemIds] = useState<string[]>([])
   const [items, setItems] = useState<Item[]>([])
+  const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null)
+  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null)
   const [state, setState] = useState<StateGroup>('stand_run')
   const [groupName, setGroupName] = useState('')
   const [actionDescription, setActionDescription] = useState('')
@@ -69,6 +72,18 @@ export default function AnimationsVideoV2Page() {
     }
   }, [rawVideoUrl])
 
+  useEffect(() => {
+    return () => {
+      if (referenceImageUrl) URL.revokeObjectURL(referenceImageUrl)
+    }
+  }, [referenceImageUrl])
+
+  function handleReferenceImageChange(file: File | null) {
+    if (referenceImageUrl) URL.revokeObjectURL(referenceImageUrl)
+    setReferenceImageFile(file)
+    setReferenceImageUrl(file ? URL.createObjectURL(file) : null)
+  }
+
   // Shared by handleVideoReady/handleHistorySelect: a new raw video means any
   // frames cut from a PREVIOUS video are no longer valid, so the cut stack is
   // cleared and the cutter remounted clean, exactly like handleDiscard does.
@@ -80,7 +95,7 @@ export default function AnimationsVideoV2Page() {
   }
 
   function snapshotSetup(): SetupSnapshot {
-    return { characterId, itemIds, state, groupName, actionDescription }
+    return { characterId, itemIds, state, groupName, actionDescription, referenceImageFile }
   }
 
   function handleVideoReady(blob: Blob) {
@@ -114,7 +129,8 @@ export default function AnimationsVideoV2Page() {
   }
 
   async function handleSave(frames: CutFrame[]) {
-    if (!setupSnapshot?.characterId || !rawVideoBlob || frames.length === 0) return
+    if ((!setupSnapshot?.characterId && !setupSnapshot?.referenceImageFile) || !rawVideoBlob || frames.length === 0)
+      return
 
     const animation: VideoAnimation = {
       id: crypto.randomUUID(),
@@ -162,22 +178,25 @@ export default function AnimationsVideoV2Page() {
             onGroupNameChange={setGroupName}
             actionDescription={actionDescription}
             onActionDescriptionChange={setActionDescription}
+            referenceImageUrl={referenceImageUrl}
+            onReferenceImageChange={handleReferenceImageChange}
             disabled={!!rawVideoUrl}
           />
           <div style={{ marginTop: 16 }}>
-            {character && !rawVideoUrl && (
+            {(character || referenceImageFile) && !rawVideoUrl && (
               <VideoV2GeneratePanel
                 character={character}
+                referenceImageFile={referenceImageFile}
                 items={items}
                 state={state}
                 actionDescription={actionDescription}
                 onVideoReady={handleVideoReady}
               />
             )}
-            {/* Gated on a picked character for the same reason the generate panel is:
-                the snapshot taken when a video is accepted is what gets saved, and a
-                snapshot with no characterId makes Save a silent no-op later on. */}
-            {character && !rawVideoUrl && (
+            {/* Gated on a picked character or reference image for the same reason the
+                generate panel is: the snapshot taken when a video is accepted is what
+                gets saved, and a snapshot with neither makes Save a silent no-op later on. */}
+            {(character || referenceImageFile) && !rawVideoUrl && (
               <VideoV2History refreshKey={historyKey} onSelect={handleHistorySelect} />
             )}
           </div>

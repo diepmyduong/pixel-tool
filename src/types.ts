@@ -111,7 +111,7 @@ export interface ImageAnimation {
  */
 export interface VideoAnimation {
   id: string
-  characterId: string
+  characterId: string | null
   itemIds: string[]
   state: StateGroup
   groupName?: string

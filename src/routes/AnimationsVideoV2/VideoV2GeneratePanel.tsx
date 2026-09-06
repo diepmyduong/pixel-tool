@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Alert, Button, Card, Collapse, Progress, Space, Typography } from 'antd'
 import type { Character, Item, StateGroup } from '../../types'
 import { primaryViewBlob } from '../../types'
-import { blobToBase64DataUri } from '../../lib/imageProcessing'
+import { blobToBase64DataUri, composeImages } from '../../lib/imageProcessing'
 import { buildVideoAnimationV2Prompt } from '../../lib/promptBuilder'
 import { generateVideo, type JobProgress } from '../../lib/spriteApi'
 import { saveRawVideoGeneration } from '../../lib/db'
@@ -10,7 +10,8 @@ import { saveRawVideoGeneration } from '../../lib/db'
 type Status = 'idle' | 'generating' | 'done' | 'error'
 
 interface VideoV2GeneratePanelProps {
-  character: Character
+  character: Character | null
+  referenceImageFile: File | null
   items: Item[]
   state: StateGroup
   actionDescription: string
@@ -28,6 +29,7 @@ function referenceViewBlob(character: Character): Blob | undefined {
 
 export default function VideoV2GeneratePanel({
   character,
+  referenceImageFile,
   items,
   state,
   actionDescription,
@@ -38,7 +40,8 @@ export default function VideoV2GeneratePanel({
   const [error, setError] = useState<string | null>(null)
 
   const prompt = useMemo(
-    () => buildVideoAnimationV2Prompt(character.description, items.map((i) => i.name), state, actionDescription),
+    () =>
+      buildVideoAnimationV2Prompt(character?.description ?? '', items.map((i) => i.name), state, actionDescription),
     [character, items, state, actionDescription],
   )
 
@@ -47,12 +50,34 @@ export default function VideoV2GeneratePanel({
     setError(null)
     setProgress(null)
     try {
-      const referenceBlob = referenceViewBlob(character)
-      if (!referenceBlob) throw new Error('Character has no reference view image')
-      const referenceDataUri = await blobToBase64DataUri(referenceBlob)
-      const itemDataUris = await Promise.all(items.map((item) => blobToBase64DataUri(item.blob)))
+      const imageDataUris: string[] = []
 
-      const result = await generateVideo(prompt, [referenceDataUri, ...itemDataUris], setProgress)
+      if (character) {
+        const referenceBlob = referenceViewBlob(character)
+        if (!referenceBlob) throw new Error('Character has no reference view image')
+        imageDataUris.push(await blobToBase64DataUri(referenceBlob))
+      }
+
+      if (referenceImageFile) {
+        imageDataUris.push(await blobToBase64DataUri(referenceImageFile))
+      }
+
+      if (items.length === 1) {
+        imageDataUris.push(await blobToBase64DataUri(items[0].blob))
+      } else if (items.length >= 2) {
+        const cols = Math.ceil(Math.sqrt(items.length))
+        const collageBlob = await composeImages(
+          items.map((i) => i.blob),
+          cols,
+        )
+        imageDataUris.push(await blobToBase64DataUri(collageBlob))
+      }
+
+      if (imageDataUris.length === 0) {
+        throw new Error('Provide a character or a reference image before generating')
+      }
+
+      const result = await generateVideo(prompt, imageDataUris, setProgress)
 
       // Download and persist the raw video immediately — before any
       // frame-cutting — so an expensive generation is never lost if the

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AutoComplete, Card, Input, Select, Space, Typography } from 'antd'
+import { AutoComplete, Button, Card, Input, Select, Space, Typography, Upload } from 'antd'
+import { UploadOutlined } from '@ant-design/icons'
 import type { Character, Item, StateGroup } from '../../types'
 import { primaryViewBlob } from '../../types'
 import { STATE_ORDER } from '../../lib/grid'
@@ -27,6 +28,8 @@ interface VideoV2SetupPanelProps {
   onGroupNameChange: (value: string) => void
   actionDescription: string
   onActionDescriptionChange: (value: string) => void
+  referenceImageUrl: string | null
+  onReferenceImageChange: (file: File | null) => void
   disabled?: boolean
 }
 
@@ -41,6 +44,8 @@ export default function VideoV2SetupPanel({
   onGroupNameChange,
   actionDescription,
   onActionDescriptionChange,
+  referenceImageUrl,
+  onReferenceImageChange,
   disabled = false,
 }: VideoV2SetupPanelProps) {
   const [characters, setCharacters] = useState<Character[]>([])
@@ -94,7 +99,7 @@ export default function VideoV2SetupPanel({
     <Card title="Setup">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <div>
-          <Typography.Text strong>Character</Typography.Text>
+          <Typography.Text strong>Character (optional if a reference image is provided)</Typography.Text>
           <Select
             style={{ width: '100%' }}
             placeholder="Select a character"
@@ -105,6 +110,42 @@ export default function VideoV2SetupPanel({
             labelRender={(props) => renderThumbOption(characterOptions.find((o) => o.value === props.value) ?? props)}
             disabled={disabled}
           />
+        </div>
+
+        <div>
+          <Typography.Text strong>Reference image (optional)</Typography.Text>
+          <div>
+            <Upload
+              accept="image/*"
+              maxCount={1}
+              showUploadList={false}
+              disabled={disabled}
+              beforeUpload={(file) => {
+                onReferenceImageChange(file)
+                return false
+              }}
+            >
+              <Button icon={<UploadOutlined />} disabled={disabled}>
+                {referenceImageUrl ? 'Replace image' : 'Upload image'}
+              </Button>
+            </Upload>
+            {referenceImageUrl && (
+              <Space style={{ marginTop: 8 }}>
+                <img
+                  src={referenceImageUrl}
+                  alt="Reference"
+                  style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, background: '#eee' }}
+                />
+                <Button size="small" danger onClick={() => onReferenceImageChange(null)} disabled={disabled}>
+                  Remove
+                </Button>
+              </Space>
+            )}
+          </div>
+          <Typography.Text type="secondary">
+            An external image sent alongside (or instead of) the selected character as an extra visual
+            reference for generation.
+          </Typography.Text>
         </div>
 
         <div>
