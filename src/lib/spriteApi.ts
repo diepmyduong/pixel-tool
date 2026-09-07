@@ -160,6 +160,7 @@ export async function generateVideo(
   prompt: string,
   images: string[],
   onProgress?: (progress: JobProgress) => void,
+  videoMode: "component" | "frame" = "component",
 ): Promise<VideoGeneratedResult> {
   const res = await fetch(`${API_BASE}?type=VIDEO_GENERATION`, {
     method: "POST",
@@ -172,7 +173,7 @@ export async function generateVideo(
       config: {
         aspectRatio: "16:9",
         videoQuality: "lite_relaxed",
-        videoMode: "component",
+        videoMode,
       },
       images,
     }),

@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import CharactersPage from './routes/Characters/CharactersPage'
+import Characters2Page from './routes/Characters2/Characters2Page'
 import ItemsPage from './routes/Items/ItemsPage'
 import AnimationsPage from './routes/Animations/AnimationsPage'
 import AnimationsByImagePage from './routes/AnimationsByImage/AnimationsByImagePage'
@@ -17,6 +18,7 @@ const { Sider, Content, Header } = Layout
 
 const menuItems = [
   { key: '/characters', icon: <UserOutlined />, label: 'Characters' },
+  { key: '/characters-2', icon: <UserOutlined />, label: 'Characters-2' },
   { key: '/items', icon: <AppstoreOutlined />, label: 'Items' },
   { key: '/animations', icon: <VideoCameraOutlined />, label: 'Animations (Video)' },
   { key: '/animations-by-image', icon: <PictureOutlined />, label: 'Animations (Image)' },
@@ -48,6 +50,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/characters" replace />} />
             <Route path="/characters" element={<CharactersPage />} />
+            <Route path="/characters-2" element={<Characters2Page />} />
             <Route path="/items" element={<ItemsPage />} />
             <Route path="/animations" element={<AnimationsPage />} />
             <Route path="/animations-by-image" element={<AnimationsByImagePage />} />

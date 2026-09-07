@@ -22,6 +22,28 @@ export function primaryViewBlob(viewBlobs: Record<View, Blob>): Blob | undefined
 export type StateGroup = 'stand_run' | 'attack' | 'roll'
 export type Direction = 'right' | 'up' | 'left' | 'down'
 
+/** The 8 movement-facing directions used by the Characters-2 sheet (4 cardinal + 4 diagonal). */
+export type Direction8 =
+  | 'up'
+  | 'down'
+  | 'left'
+  | 'right'
+  | 'up_left'
+  | 'up_right'
+  | 'down_left'
+  | 'down_right'
+
+export const DIRECTION8_ORDER: Direction8[] = [
+  'up',
+  'down',
+  'left',
+  'right',
+  'up_left',
+  'up_right',
+  'down_left',
+  'down_right',
+]
+
 export interface Character {
   id: string
   name: string
@@ -33,6 +55,22 @@ export interface Character {
 }
 
 /**
+ * "Characters-2" flow: instead of static front/back/3-quarter turnaround
+ * views, each direction is captured twice — once standing (idle), once mid-run
+ * — for a single character version (2 columns x 8 direction rows).
+ */
+export interface Character2 {
+  id: string
+  name: string
+  description: string
+  styleTemplate: string
+  prompt: string
+  standBlobs: Record<Direction8, Blob>
+  runBlobs: Record<Direction8, Blob>
+  createdAt: number
+}
+
+/**
  * Every raw image returned by the generation API, saved immediately on
  * generation success — before the user has picked a version/variant from
  * it — so a generation is never lost or re-paid-for just because the user
@@ -40,7 +78,7 @@ export interface Character {
  */
 export interface RawGeneration {
   id: string
-  kind: 'character' | 'item' | 'animation'
+  kind: 'character' | 'character2' | 'item' | 'animation'
   prompt: string
   imageBlob: Blob
   createdAt: number

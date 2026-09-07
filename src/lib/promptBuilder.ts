@@ -1,8 +1,11 @@
-import type { StateGroup } from "../types";
+import type { Direction8, StateGroup } from "../types";
+import { DIRECTION8_ORDER } from "../types";
 import {
   ANIM_IMG_GRID_COLS_DEFAULT as ANIM_IMG_GRID_COLS,
   ANIM_IMG_GRID_ROWS,
   ANIMATION_VIDEO_SECONDS,
+  CHAR2_GRID_COLS,
+  CHAR2_GRID_ROWS,
   CHARACTER_LAYOUT,
   CHAR_GRID_COLS,
   CHAR_GRID_ROWS,
@@ -36,6 +39,117 @@ export function buildCharacterPrompt(
     "Bottom-right 2x3 block (rows 10-11, cols 4-6): leave as plain green screen filler, no character, to reduce watermark risk.",
     "No text, no watermark, no logo anywhere in the image.",
   ].join("\n\n");
+}
+
+const DIRECTION8_FACING_HINT: Record<Direction8, string> = {
+  up: "facing away from the camera, moving toward the top of the screen (back view)",
+  down: "facing the camera, moving toward the bottom of the screen (front view)",
+  left: "facing left in profile, moving toward the left of the screen (side view)",
+  right: "facing right in profile, moving toward the right of the screen (side view)",
+  up_left: "facing up-left at a diagonal (back three-quarter view), moving toward the top-left of the screen",
+  up_right: "facing up-right at a diagonal (back three-quarter view), moving toward the top-right of the screen",
+  down_left: "facing down-left at a diagonal (front three-quarter view), moving toward the bottom-left of the screen",
+  down_right: "facing down-right at a diagonal (front three-quarter view), moving toward the bottom-right of the screen",
+};
+
+/**
+ * Character-2 sheet: 2 columns (standing / running) x 8 direction rows, a
+ * single character version per image — unlike buildCharacterPrompt's static
+ * turnaround views, every cell shows the same 8 movement-facing directions,
+ * just in a different pose per column.
+ */
+export function buildCharacterPrompt2(
+  description: string,
+  styleTemplate: string,
+): string {
+  const standRows = DIRECTION8_ORDER.map(
+    (direction, i) =>
+      `Row ${i + 1}: standing idle pose, ${DIRECTION8_FACING_HINT[direction]}.`,
+  );
+  const runRows = DIRECTION8_ORDER.map(
+    (direction, i) =>
+      `Row ${i + 1}: running pose (mid-stride, clearly airborne/pushing-off leg and pumping arms, not just standing), ${DIRECTION8_FACING_HINT[direction]}.`,
+  );
+  return [
+    `Character movement-direction reference sheet, ${CHAR2_GRID_COLS}x${CHAR2_GRID_ROWS} grid (2 columns, ${CHAR2_GRID_ROWS} rows) on pure flat green screen background (solid chroma key green, #00FF00, no gradient, no shadow, no vignette, no texture anywhere on the background), each cell a separate isolated full-body pose of the SAME single character version, no overlap between cells.`,
+    `Column 1 (left column, all ${CHAR2_GRID_ROWS} cells top to bottom) is the character's STANDING/IDLE pose, one row per movement direction, in this exact row order:`,
+    ...standRows,
+    `Column 2 (right column, all ${CHAR2_GRID_ROWS} cells top to bottom) is the character's RUNNING pose, one row per movement direction, in this exact row order — the SAME direction as column 1's row in that same row position:`,
+    ...runRows,
+    "Cell dividers: 1 solid black pixel line between each cell, not part of the character or background, just a visual guide for the model to keep the grid layout correct.",
+    `Each character pose must be centered in its cell with clear even padding (at least 10% of the cell's width and height) between the character's silhouette and the cell edge on all sides — never let hands, feet, hair, weapons, or hat brims touch or cross the cell boundary.`,
+    styleTemplate,
+    `Character: ${description}`,
+    "No text, no watermark, no logo anywhere in the image.",
+  ].join("\n\n");
+}
+
+// Kept short and to one clear instruction per direction — an earlier version
+// stacked several extra clauses per diagonal (hip angle, leading/trailing
+// limb, path-curvature warning), and the model tried to satisfy all of them
+// at once by breaking the pose into an odd, twisted stance instead of just
+// running at a 45-degree angle. One plain "diagonal, halfway between X and Y"
+// instruction reads clearly and keeps the run cycle natural.
+const DIRECTION8_MOTION_HINT: Record<Direction8, string> = {
+  up: "moving straight toward the top of the screen",
+  down: "moving straight toward the bottom of the screen",
+  left: "moving straight toward the left of the screen",
+  right: "moving straight toward the right of the screen",
+  up_right: "running at a 45-degree diagonal, halfway between up and right, toward the upper-right corner of the screen",
+  up_left: "running at a 45-degree diagonal, halfway between up and left, toward the upper-left corner of the screen",
+  down_right: "running at a 45-degree diagonal, halfway between down and right, toward the lower-right corner of the screen",
+  down_left: "running at a 45-degree diagonal, halfway between down and left, toward the lower-left corner of the screen",
+};
+
+export type Character2Pose = "stand" | "run";
+
+/**
+ * Video prompt for one Character-2 cell (a pose + direction combination).
+ * The provided reference image is that exact cell's still frame — it must
+ * be treated as frame 0, not just a loose style reference, since the whole
+ * point is animating that specific pose/direction outward from where it
+ * already stands in the sheet.
+ */
+export function buildCharacter2VideoPrompt(
+  pose: Character2Pose,
+  direction: Direction8,
+  description: string,
+): string {
+  const positionBlock =
+    pose === "stand"
+      ? `CRITICAL — fixed position, this is an IDLE animation, the character does NOT travel: the character is centered in frame and stays at that exact spot on screen for the entire clip. No walking, no running, no stepping forward or sideways, no drifting, no entrance, no exit. Only a subtle idle motion is allowed — light bobbing/swaying in place, hair and clothing fluttering gently in a breeze, weight shifting slightly — and the character's feet stay planted on the same spot throughout. Frame 0, the middle frame, and the last frame all show the character at the exact same screen position.`
+      : `CRITICAL — this is a RUN-IN-PLACE animation, the character does NOT travel across the frame: even though the action being performed is running (${DIRECTION8_MOTION_HINT[direction]}), the character's body stays centered in frame and anchored to the same spot on screen for the entire clip, exactly like running on a treadmill — legs stride and arms pump as if covering ground, but the character never actually moves toward the edge of the frame, never drifts, and never exits. Frame 0, the middle frame, and the last frame all show the character at the exact same screen position.`;
+
+  const actionText =
+    pose === "stand"
+      ? `standing still in place, not walking or running, ${DIRECTION8_FACING_HINT[direction]}.`
+      : `running in place at a steady pace, with a clear full-body run cycle (arms pumping, legs striding, slight bounce): ${DIRECTION8_MOTION_HINT[direction]}.`;
+
+  // Repeated as its own standalone line right after the action, on top of
+  // positionBlock above — the single earlier "fixed position" paragraph was
+  // sometimes outweighed by the action line ("standing" still read as license
+  // to take a step), so the no-movement rule for stand is now stated twice,
+  // once in the general position rules and once right next to the action.
+  const standReinforcement =
+    pose === "stand"
+      ? "CRITICAL — the character must remain completely stationary for the whole clip: no steps, no shifting to a different spot, no leaning that moves the body's center off its starting point. Any movement is limited to idle sway/breathing/hair/clothing motion that returns to the same spot, never a step or a walk."
+      : "";
+
+  return [
+    `${ANIMATION_VIDEO_SECONDS} second video, 16:9 frame, ONE single character only — never two copies, never a split screen, never a grid of panels.`,
+    `CRITICAL — the attached reference image is the exact starting frame of this video: frame 0 must match it as closely as possible (same pose, same facing, same framing, same character design) before any motion begins.`,
+    `Background: pure flat green screen (solid chroma key green, #00FF00), no gradient, no shadow, no vignette, no texture, nothing else in the background. This flat single-colour background exists specifically so the background can be keyed out afterwards — any shadow cast onto the background, any coloured rim light, or any green tint on the character itself will break that step.`,
+    `CRITICAL — fixed camera: no zoom, no push-in, no pull-out, no pan, no tilt, no orbit, no handheld shake, no rack focus. The camera is locked off for the entire clip and the character stays the same size on screen from first frame to last.`,
+    positionBlock,
+    `CRITICAL — fixed facing: the character keeps facing the same direction as the reference image (${DIRECTION8_FACING_HINT[direction]}) in frame 0, in the middle, and in the last frame. It never turns to face another direction.`,
+    `The action: ${actionText}`,
+    standReinforcement,
+    `Character reference: ${description}`,
+    `Audio: none. Do NOT include background music, and do NOT include any soundtrack or score. Silence, or incidental sound effects only.`,
+    "No text, no watermark, no logo, no UI overlay, no letterboxing anywhere in the video.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 const DEFAULT_ACTION_TEXT: Record<StateGroup, string> = {

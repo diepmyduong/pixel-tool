@@ -3,6 +3,7 @@ import type {
   Animation,
   AnimationFramePair,
   Character,
+  Character2,
   ImageAnimation,
   Item,
   RawGeneration,
@@ -12,6 +13,7 @@ import type {
 
 interface SpriteDashboardDB extends DBSchema {
   characters: { key: string; value: Character }
+  characters2: { key: string; value: Character2 }
   rawGenerations: { key: string; value: RawGeneration; indexes: { kind: string } }
   items: { key: string; value: Item }
   rawVideoGenerations: { key: string; value: RawVideoGeneration }
@@ -25,10 +27,13 @@ let dbPromise: Promise<IDBPDatabase<SpriteDashboardDB>> | null = null
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<SpriteDashboardDB>('sprite-dashboard', 9, {
+    dbPromise = openDB<SpriteDashboardDB>('sprite-dashboard', 10, {
       upgrade(db) {
         if (!db.objectStoreNames.contains('characters')) {
           db.createObjectStore('characters', { keyPath: 'id' })
+        }
+        if (!db.objectStoreNames.contains('characters2')) {
+          db.createObjectStore('characters2', { keyPath: 'id' })
         }
         if (!db.objectStoreNames.contains('rawGenerations')) {
           const rawGenerations = db.createObjectStore('rawGenerations', { keyPath: 'id' })
@@ -75,6 +80,21 @@ export async function getCharacter(id: string): Promise<Character | undefined> {
 export async function listCharacters(): Promise<Character[]> {
   const db = await getDB()
   return db.getAll('characters')
+}
+
+export async function saveCharacter2(character: Character2): Promise<void> {
+  const db = await getDB()
+  await db.put('characters2', character)
+}
+
+export async function getCharacter2(id: string): Promise<Character2 | undefined> {
+  const db = await getDB()
+  return db.get('characters2', id)
+}
+
+export async function listCharacters2(): Promise<Character2[]> {
+  const db = await getDB()
+  return db.getAll('characters2')
 }
 
 export async function saveRawGeneration(generation: RawGeneration): Promise<void> {

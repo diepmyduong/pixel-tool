@@ -1,5 +1,5 @@
-import type { Direction, StateGroup, View } from '../types'
-import { VIEW_ORDER } from '../types'
+import type { Direction, Direction8, StateGroup, View } from '../types'
+import { DIRECTION8_ORDER, VIEW_ORDER } from '../types'
 
 export const SOURCE_ASPECT_RATIO = '9:16'
 
@@ -50,6 +50,42 @@ export const CHARACTER_LAYOUT = buildCharacterLayout()
 export function versionCells(version: number): CharacterCell[] {
   return CHARACTER_LAYOUT.filter((c) => c.version === version)
 }
+
+// --- Characters-2: 2 columns (stand / run) x 8 direction rows, one character version per sheet ---
+export const CHAR2_GRID_COLS = 2
+export const CHAR2_GRID_ROWS = DIRECTION8_ORDER.length // 8
+export const CHAR2_GRID_CELLS = CHAR2_GRID_COLS * CHAR2_GRID_ROWS // 16
+
+export type Character2Pose = 'stand' | 'run'
+export const CHARACTER2_POSE_ORDER: Character2Pose[] = ['stand', 'run']
+
+export interface Character2Cell {
+  cellIndex: number
+  row: number
+  col: number
+  direction: Direction8
+  pose: Character2Pose
+}
+
+/** Col 0 = standing pose, col 1 = running pose, one row per direction in DIRECTION8_ORDER. */
+export function buildCharacter2Layout(): Character2Cell[] {
+  const cells: Character2Cell[] = []
+  for (let row = 0; row < CHAR2_GRID_ROWS; row++) {
+    for (let col = 0; col < CHAR2_GRID_COLS; col++) {
+      const cellIndex = row * CHAR2_GRID_COLS + col
+      cells.push({
+        cellIndex,
+        row,
+        col,
+        direction: DIRECTION8_ORDER[row],
+        pose: CHARACTER2_POSE_ORDER[col],
+      })
+    }
+  }
+  return cells
+}
+
+export const CHARACTER2_LAYOUT = buildCharacter2Layout()
 
 export const ITEM_GRID_COLS = 6
 export const ITEM_GRID_ROWS = 11
