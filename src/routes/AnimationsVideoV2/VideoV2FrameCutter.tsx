@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Card, Slider, Space, Tooltip, Typography } from 'antd'
-import { ArrowLeftOutlined, ArrowRightOutlined, DeleteOutlined, ScissorOutlined } from '@ant-design/icons'
+import { Button, Card, InputNumber, Slider, Space, Tooltip, Typography } from 'antd'
+import { ArrowLeftOutlined, ArrowRightOutlined, DeleteOutlined, FastForwardOutlined, ScissorOutlined, StopOutlined } from '@ant-design/icons'
 import type { StateGroup } from '../../types'
 import { captureFullFrame, getVideoDuration } from '../../lib/videoProcessing'
 import { chromaKey, canvasToBlob } from '../../lib/imageProcessing'
@@ -37,6 +37,15 @@ export default function VideoV2FrameCutter({
   const [frames, setFrames] = useState<CutFrame[]>([])
   const [frameDurationSeconds, setFrameDurationSeconds] = useState(VIDEO_V2_DEFAULT_FRAME_DURATION_SECONDS)
   const [loop, setLoop] = useState(true)
+  // How far the timeline auto-advances after each cut (manual or via "Auto
+  // cut to end") — separate from frameDurationSeconds, which is the
+  // resulting animation's playback speed, not the cutting step.
+  const [cutStepSeconds, setCutStepSeconds] = useState(0.1)
+  const [autoCutting, setAutoCutting] = useState(false)
+  // Flipped to true by "Stop" to break out of the auto-cut loop between
+  // iterations; auto-cut has no other cancellation point since each capture
+  // is a real async video seek/draw that can't be aborted mid-flight.
+  const autoCutStopRef = useRef(false)
 
   useEffect(() => {
     getVideoDuration(videoUrl).then(setDuration)
@@ -71,18 +80,56 @@ export default function VideoV2FrameCutter({
     if (videoRef.current) videoRef.current.currentTime = timestamp
   }
 
+  /** Captures the frame at `timestamp`, appends it to the stack, and returns it. */
+  async function cutFrameAt(timestamp: number): Promise<CutFrame> {
+    const canvas = await captureFullFrame(videoUrl, timestamp)
+    const rawBlob = await canvasToBlob(canvas)
+    chromaKey(canvas)
+    const keyedBlob = await canvasToBlob(canvas)
+    const url = URL.createObjectURL(keyedBlob)
+    const frame: CutFrame = { id: crypto.randomUUID(), timestamp, rawBlob, keyedBlob, url }
+    setFrames((prev) => [...prev, frame])
+    return frame
+  }
+
+  /** Advances the timeline/video element by cutStepSeconds, clamped to the clip's duration. */
+  function advanceByCutStep(fromTime: number) {
+    const next = Math.min(fromTime + cutStepSeconds, duration)
+    setCurrentTime(next)
+    if (videoRef.current) videoRef.current.currentTime = next
+    return next
+  }
+
   async function handleCutFrame() {
     setCutting(true)
     try {
-      const canvas = await captureFullFrame(videoUrl, currentTime)
-      const rawBlob = await canvasToBlob(canvas)
-      chromaKey(canvas)
-      const keyedBlob = await canvasToBlob(canvas)
-      const url = URL.createObjectURL(keyedBlob)
-      setFrames((prev) => [...prev, { id: crypto.randomUUID(), timestamp: currentTime, rawBlob, keyedBlob, url }])
+      await cutFrameAt(currentTime)
+      advanceByCutStep(currentTime)
     } finally {
       setCutting(false)
     }
+  }
+
+  async function handleAutoCutToEnd() {
+    setAutoCutting(true)
+    autoCutStopRef.current = false
+    try {
+      let time = currentTime
+      // <= with a small epsilon so the very last step (which may land
+      // within floating-point noise of `duration`) still gets cut instead
+      // of being skipped for landing a hair past the end.
+      while (time <= duration + 0.001 && !autoCutStopRef.current) {
+        await cutFrameAt(time)
+        if (time >= duration) break
+        time = advanceByCutStep(time)
+      }
+    } finally {
+      setAutoCutting(false)
+    }
+  }
+
+  function handleStopAutoCut() {
+    autoCutStopRef.current = true
   }
 
   function handleDelete(id: string) {
@@ -115,11 +162,38 @@ export default function VideoV2FrameCutter({
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
         />
         <Slider min={0} max={duration} step={0.01} value={currentTime} onChange={handleSliderChange} />
-        <Space>
+        <Space wrap>
           <Typography.Text>Timestamp: {currentTime.toFixed(2)}s</Typography.Text>
-          <Button type="primary" icon={<ScissorOutlined />} onClick={handleCutFrame} loading={cutting}>
+          <Button
+            type="primary"
+            icon={<ScissorOutlined />}
+            onClick={handleCutFrame}
+            loading={cutting}
+            disabled={autoCutting}
+          >
             Cut this frame
           </Button>
+          <Typography.Text>Step</Typography.Text>
+          <InputNumber
+            min={0.01}
+            step={0.01}
+            value={cutStepSeconds}
+            onChange={(value) => setCutStepSeconds(value ?? 0.1)}
+            style={{ width: 90 }}
+            disabled={autoCutting}
+          />
+          <Typography.Text type="secondary">
+            seconds — advances the timestamp by this much after each cut
+          </Typography.Text>
+          {!autoCutting ? (
+            <Button icon={<FastForwardOutlined />} onClick={handleAutoCutToEnd} disabled={cutting}>
+              Auto cut to end
+            </Button>
+          ) : (
+            <Button danger icon={<StopOutlined />} onClick={handleStopAutoCut}>
+              Stop
+            </Button>
+          )}
         </Space>
 
         <Typography.Text type="secondary">

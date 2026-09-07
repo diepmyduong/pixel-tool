@@ -4,6 +4,7 @@ import type {
   AnimationFramePair,
   Character,
   Character2,
+  Character2VideoSession,
   ImageAnimation,
   Item,
   RawGeneration,
@@ -14,6 +15,7 @@ import type {
 interface SpriteDashboardDB extends DBSchema {
   characters: { key: string; value: Character }
   characters2: { key: string; value: Character2 }
+  character2VideoSessions: { key: string; value: Character2VideoSession }
   rawGenerations: { key: string; value: RawGeneration; indexes: { kind: string } }
   items: { key: string; value: Item }
   rawVideoGenerations: { key: string; value: RawVideoGeneration }
@@ -27,13 +29,16 @@ let dbPromise: Promise<IDBPDatabase<SpriteDashboardDB>> | null = null
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<SpriteDashboardDB>('sprite-dashboard', 10, {
+    dbPromise = openDB<SpriteDashboardDB>('sprite-dashboard', 11, {
       upgrade(db) {
         if (!db.objectStoreNames.contains('characters')) {
           db.createObjectStore('characters', { keyPath: 'id' })
         }
         if (!db.objectStoreNames.contains('characters2')) {
           db.createObjectStore('characters2', { keyPath: 'id' })
+        }
+        if (!db.objectStoreNames.contains('character2VideoSessions')) {
+          db.createObjectStore('character2VideoSessions', { keyPath: 'id' })
         }
         if (!db.objectStoreNames.contains('rawGenerations')) {
           const rawGenerations = db.createObjectStore('rawGenerations', { keyPath: 'id' })
@@ -95,6 +100,21 @@ export async function getCharacter2(id: string): Promise<Character2 | undefined>
 export async function listCharacters2(): Promise<Character2[]> {
   const db = await getDB()
   return db.getAll('characters2')
+}
+
+export async function saveCharacter2VideoSession(session: Character2VideoSession): Promise<void> {
+  const db = await getDB()
+  await db.put('character2VideoSessions', session)
+}
+
+export async function getCharacter2VideoSession(id: string): Promise<Character2VideoSession | undefined> {
+  const db = await getDB()
+  return db.get('character2VideoSessions', id)
+}
+
+export async function listCharacter2VideoSessions(): Promise<Character2VideoSession[]> {
+  const db = await getDB()
+  return db.getAll('character2VideoSessions')
 }
 
 export async function saveRawGeneration(generation: RawGeneration): Promise<void> {

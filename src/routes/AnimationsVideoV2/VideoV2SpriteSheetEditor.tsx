@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Card, Slider, Space, Typography } from 'antd'
+import { Button, Card, Slider, Space, Switch, Typography } from 'antd'
 import type { CutFrame } from './VideoV2FrameCutter'
 import {
   VIDEO_SHEET_FRAME_SIZE,
   composeFrameStrip,
+  composeOriginalFrameStrip,
   downloadFrameStrip,
   fitFrameWithOffset,
   loadFrameCanvas,
@@ -29,6 +30,7 @@ interface VideoV2SpriteSheetEditorProps {
   onLoopChange: (value: boolean) => void
   onBack: () => void
   onSave: () => void
+  saveLabel?: string
 }
 
 /**
@@ -42,11 +44,13 @@ function FrameCell({
   margin,
   offset,
   onOffsetChange,
+  pixelated,
 }: {
   frame: CutFrame
   margin: number
   offset: FrameOffset
   onOffsetChange: (offset: FrameOffset) => void
+  pixelated: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sourceRef = useRef<HTMLCanvasElement | null>(null)
@@ -109,7 +113,7 @@ function FrameCell({
         height: CELL_DISPLAY_SIZE,
         background: 'repeating-conic-gradient(#ccc 0% 25%, #eee 0% 50%) 0 0 / 16px 16px',
         cursor: 'grab',
-        imageRendering: 'pixelated',
+        imageRendering: pixelated ? 'pixelated' : 'auto',
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -131,10 +135,17 @@ export default function VideoV2SpriteSheetEditor({
   onLoopChange,
   onBack,
   onSave,
+  saveLabel = 'Save animation',
 }: VideoV2SpriteSheetEditorProps) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [exporting, setExporting] = useState(false)
+  const [exportingOriginal, setExportingOriginal] = useState(false)
+  // Defaults to smooth (browser's normal image scaling) rather than the
+  // hard-edged pixelated look, since the sharp-pixel rendering only matters
+  // when actually checking pixel-level alignment — most of the time in this
+  // editor is spent looking at overall composition/positioning.
+  const [pixelatedPreview, setPixelatedPreview] = useState(false)
 
   // Re-render the preview strip's frame URLs whenever margin/offsets change,
   // so VideoV2Preview shows the edited (not raw) frames.
@@ -207,6 +218,22 @@ export default function VideoV2SpriteSheetEditor({
     }
   }
 
+  /**
+   * Exports the frames at their original captured size — no fit/margin/
+   * offset applied, unlike handleExport's 64x64 pixel-art strip — for cases
+   * where the source resolution should be preserved as-is.
+   */
+  async function handleExportOriginal() {
+    setExportingOriginal(true)
+    try {
+      const canvases = await Promise.all(frames.map((frame) => loadFrameCanvas(frame.keyedBlob)))
+      const blob = await composeOriginalFrameStrip(canvases)
+      downloadFrameStrip(blob, `animation_sheet_original_${Date.now()}.png`)
+    } finally {
+      setExportingOriginal(false)
+    }
+  }
+
   return (
     <Card title="Sprite Sheet Editor">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -234,6 +261,13 @@ export default function VideoV2SpriteSheetEditor({
           <Button size="small" loading={exporting} onClick={handleExport}>
             Export Sprite Sheet ({frames.length} x {VIDEO_SHEET_FRAME_SIZE}px)
           </Button>
+          <Button size="small" loading={exportingOriginal} onClick={handleExportOriginal}>
+            Export original size
+          </Button>
+          <Space size="small">
+            <Switch checked={pixelatedPreview} onChange={setPixelatedPreview} size="small" />
+            <Typography.Text type="secondary">Pixelated preview</Typography.Text>
+          </Space>
         </Space>
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -244,6 +278,7 @@ export default function VideoV2SpriteSheetEditor({
                 margin={margin}
                 offset={offsets[index]}
                 onOffsetChange={(offset) => handleFrameOffsetChange(index, offset)}
+                pixelated={pixelatedPreview}
               />
               <Typography.Text type="secondary" style={{ display: 'block', textAlign: 'center' }}>
                 {index + 1}
@@ -255,7 +290,7 @@ export default function VideoV2SpriteSheetEditor({
         <Space>
           <Button onClick={onBack}>Back to chroma key tuning</Button>
           <Button type="primary" onClick={onSave}>
-            Save animation
+            {saveLabel}
           </Button>
         </Space>
       </Space>

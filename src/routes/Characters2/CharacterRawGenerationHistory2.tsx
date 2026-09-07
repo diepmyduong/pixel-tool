@@ -6,7 +6,7 @@ import { listRawGenerations, saveRawGeneration } from '../../lib/db'
 
 interface CharacterRawGenerationHistory2Props {
   refreshKey: number
-  onSelect: (imageUrl: string) => void
+  onSelect: (imageBlob: Blob) => void
 }
 
 function CharacterRawGenerationHistory2({ refreshKey, onSelect }: CharacterRawGenerationHistory2Props) {
@@ -78,7 +78,7 @@ function CharacterRawGenerationHistory2({ refreshKey, onSelect }: CharacterRawGe
           {generations.map((gen) => (
             <div
               key={gen.id}
-              onClick={() => onSelect(urls[gen.id])}
+              onClick={() => onSelect(gen.imageBlob)}
               style={{ cursor: 'pointer', border: '1px solid #eee' }}
             >
               <Image src={urls[gen.id]} width={60} height={100} style={{ objectFit: 'cover' }} preview={false} />

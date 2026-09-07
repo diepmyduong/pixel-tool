@@ -1,20 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, Card, Modal, Progress, Select, Space, Tag, Typography, Upload, message } from 'antd'
-import { StopOutlined, UploadOutlined, VideoCameraOutlined } from '@ant-design/icons'
-import type { Direction8 } from '../../types'
+import { DownloadOutlined, ScissorOutlined, StopOutlined, UploadOutlined, VideoCameraOutlined } from '@ant-design/icons'
+import type { Character2VideoEntry, Direction8 } from '../../types'
 import { DIRECTION8_ORDER } from '../../types'
-import { CHAR2_GRID_COLS, CHAR2_GRID_ROWS } from '../../lib/grid'
+import { CHAR2_GRID_ROWS } from '../../lib/grid'
 import { canvasToBlob, blobToBase64DataUri, chromaKey, sliceCells } from '../../lib/imageProcessing'
 import { buildCharacter2VideoPrompt, type Character2Pose } from '../../lib/promptBuilder'
 import { generateVideo, type JobProgress } from '../../lib/spriteApi'
-import { saveRawVideoGeneration } from '../../lib/db'
+import { getCharacter2VideoSession, saveCharacter2VideoSession, saveRawVideoGeneration } from '../../lib/db'
+import { downloadVideosAsZip } from '../../lib/videoZip'
 import { useGridBoundaries2 } from '../../lib/useGridBoundaries2'
 import GridBoundaryOverlay2 from '../../lib/GridBoundaryOverlay2'
+import Character2CutFramesModal from './Character2CutFramesModal'
 
 interface CharacterVersionPicker2Props {
   imageUrl: string
+  imageBlob: Blob
+  name: string
   description: string
-  onVersionChosen: (blobs: { standBlobs: Record<Direction8, Blob>; runBlobs: Record<Direction8, Blob> }) => void
+  onVideoSaved: () => void
 }
 
 type VideoCellKey = `${number}-${Character2Pose}`
@@ -23,16 +27,31 @@ interface VideoCellState {
   status: 'idle' | 'generating' | 'done' | 'error'
   progress: JobProgress | null
   videoUrl: string | null
+  videoBlob: Blob | null
   error: string | null
 }
 
-const IDLE_VIDEO_CELL: VideoCellState = { status: 'idle', progress: null, videoUrl: null, error: null }
+const IDLE_VIDEO_CELL: VideoCellState = {
+  status: 'idle',
+  progress: null,
+  videoUrl: null,
+  videoBlob: null,
+  error: null,
+}
 
 // Trims a few pixels off each sliced cell's edges to drop stray grid-line /
 // anti-alias fringe pixels the AI sometimes draws right at cell boundaries.
 const SLICE_INSET_PX = 6
 
 const DIRECTION_OPTIONS = DIRECTION8_ORDER.map((d) => ({ value: d, label: d }))
+
+// The generation prompt (buildCharacterPrompt2) asks for a strict 2-column
+// sheet, but the model often draws each pose across 2 columns instead of 1
+// (e.g. stand-front/stand-back in cols 1-2, run-front/run-back in cols 3-4),
+// so the picker's starting grid is seeded wider than the prompt to match
+// what actually comes back — the row/column controls still let it be
+// adjusted either way.
+const INITIAL_SLICE_COLS = 4
 
 /** Where a row's stand/run pose image comes from: a cell of the sliced sheet, or a separately uploaded image. */
 type ImageRef = { source: 'grid'; cellIndex: number } | { source: 'upload'; uploadIndex: number }
@@ -68,8 +87,14 @@ async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
   }
 }
 
-export default function CharacterVersionPicker2({ imageUrl, description, onVersionChosen }: CharacterVersionPicker2Props) {
-  const grid = useGridBoundaries2(CHAR2_GRID_COLS, CHAR2_GRID_ROWS, imageUrl)
+export default function CharacterVersionPicker2({
+  imageUrl,
+  imageBlob,
+  name,
+  description,
+  onVideoSaved,
+}: CharacterVersionPicker2Props) {
+  const grid = useGridBoundaries2(INITIAL_SLICE_COLS, CHAR2_GRID_ROWS, imageUrl)
   const [sliced, setSliced] = useState<(HTMLCanvasElement | undefined)[] | null>(null)
   // Maps a sliced row index -> the direction the user says that row is.
   // Not assumed from DIRECTION8_ORDER by position, since add/remove row can
@@ -85,7 +110,6 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
   const [rowStandRef, setRowStandRef] = useState<Record<number, ImageRef>>({})
   const [rowRunRef, setRowRunRef] = useState<Record<number, ImageRef>>({})
   const [uploadedCanvases, setUploadedCanvases] = useState<HTMLCanvasElement[]>([])
-  const [saving, setSaving] = useState(false)
   // Which row+slot ("stand" or "run") the "choose from any cell" modal is
   // currently editing; null when the modal is closed.
   const [pickerTarget, setPickerTarget] = useState<{ row: number; slot: 'stand' | 'run' } | null>(null)
@@ -94,12 +118,19 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
   // editing the stand/run image assignment underneath it.
   const [videoCells, setVideoCells] = useState<Record<VideoCellKey, VideoCellState>>({})
   const [generatingAll, setGeneratingAll] = useState(false)
+  const [zippingAll, setZippingAll] = useState(false)
+  const [cutTarget, setCutTarget] = useState<{ key: VideoCellKey; url: string; title: string } | null>(null)
   // Bumped every time a cell's generation (re)starts or is stopped, so a
   // late-arriving poll/download from a stopped run can tell it's stale and
   // discard its result instead of overwriting whatever the cell moved on to.
   // The API has no cancel endpoint — the server job keeps running — so
   // "Stop" only abandons the client-side wait, it can't actually cancel it.
   const generationTokens = useRef<Record<VideoCellKey, number>>({})
+  // One video session per sheet image, created lazily on the first
+  // successful video generation and reused (by id) for every subsequent
+  // video from this same sheet, so "Video history" shows one entry per
+  // sheet with all of its videos rather than one entry per video.
+  const sessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     setSliced(null)
@@ -109,6 +140,7 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
     setUploadedCanvases([])
     setVideoCells({})
     generationTokens.current = {}
+    sessionIdRef.current = null
   }, [imageUrl])
 
   function canvasForRef(ref: ImageRef | undefined): HTMLCanvasElement | undefined {
@@ -129,6 +161,33 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
     const key: VideoCellKey = `${row}-${pose}`
     generationTokens.current[key] = (generationTokens.current[key] ?? 0) + 1
     updateVideoCell(row, pose, { status: 'idle', progress: null, error: null })
+  }
+
+  /** Appends one video to this sheet's session, creating the session on first use. */
+  async function appendToSession(entry: Character2VideoEntry) {
+    const now = Date.now()
+    if (!sessionIdRef.current) {
+      const id = crypto.randomUUID()
+      sessionIdRef.current = id
+      await saveCharacter2VideoSession({
+        id,
+        name,
+        description,
+        sheetImageBlob: imageBlob,
+        videos: [entry],
+        createdAt: now,
+        updatedAt: now,
+      })
+    } else {
+      const existing = await getCharacter2VideoSession(sessionIdRef.current)
+      if (!existing) return
+      await saveCharacter2VideoSession({
+        ...existing,
+        videos: [...existing.videos, entry],
+        updatedAt: now,
+      })
+    }
+    onVideoSaved()
   }
 
   async function generateVideoForCell(row: number, pose: Character2Pose) {
@@ -175,7 +234,10 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
       })
       if (isStale()) return
 
-      updateVideoCell(row, pose, { status: 'done', videoUrl: URL.createObjectURL(videoBlob) })
+      await appendToSession({ direction, pose, prompt, videoBlob, createdAt: Date.now() })
+      if (isStale()) return
+
+      updateVideoCell(row, pose, { status: 'done', videoUrl: URL.createObjectURL(videoBlob), videoBlob })
     } catch (err) {
       if (isStale()) return
       updateVideoCell(row, pose, { status: 'error', error: err instanceof Error ? err.message : String(err) })
@@ -195,8 +257,36 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
     }
   }
 
+  async function handleDownloadAllZip() {
+    const entries: Character2VideoEntry[] = []
+    for (let row = 0; row < grid.rows; row++) {
+      const direction = rowDirections[row]
+      if (!direction) continue
+      for (const pose of ['stand', 'run'] as const) {
+        const cell = videoCellState(row, pose)
+        if (cell.videoBlob) entries.push({ direction, pose, prompt: '', videoBlob: cell.videoBlob, createdAt: Date.now() })
+      }
+    }
+    if (entries.length === 0) {
+      message.error('No generated videos to download yet')
+      return
+    }
+    setZippingAll(true)
+    try {
+      await downloadVideosAsZip(entries, `${(name || 'character').replace(/[^a-z0-9_-]+/gi, '_')}_videos_${Date.now()}.zip`)
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err))
+    } finally {
+      setZippingAll(false)
+    }
+  }
+
   async function handleSlice() {
     if (!grid.colBoundaries || !grid.rowBoundaries) return
+    // Cells are kept with their original chroma-key green background, not
+    // keyed to transparent here: they're sent as video-generation reference
+    // images, and the API needs to see the flat green background to key it
+    // out itself — a transparent reference would just look like empty space.
     const cells = await sliceCells(
       imageUrl,
       grid.cols,
@@ -206,9 +296,6 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
       null,
       SLICE_INSET_PX,
     )
-    for (const canvas of cells) {
-      if (canvas) chromaKey(canvas)
-    }
     setSliced(cells)
     setRowDirections(
       Object.fromEntries(Array.from({ length: grid.rows }, (_, row) => [row, DIRECTION8_ORDER[row % 8]])),
@@ -249,36 +336,6 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
     return false
   }
 
-  async function handleUse() {
-    if (!sliced) return
-    const usedDirections = Object.values(rowDirections)
-    const missing = DIRECTION8_ORDER.filter((d) => !usedDirections.includes(d))
-    if (missing.length > 0) {
-      message.error(`Assign a row to every direction — missing: ${missing.join(', ')}`)
-      return
-    }
-    setSaving(true)
-    try {
-      const standBlobs = {} as Record<Direction8, Blob>
-      const runBlobs = {} as Record<Direction8, Blob>
-      for (let row = 0; row < grid.rows; row++) {
-        const direction = rowDirections[row]
-        if (!direction) continue
-        const standCanvas = canvasForRef(rowStandRef[row])
-        const runCanvas = canvasForRef(rowRunRef[row])
-        if (!standCanvas || !runCanvas) throw new Error(`Missing sliced cell for row ${row + 1}`)
-        standBlobs[direction] = await canvasToBlob(standCanvas)
-        runBlobs[direction] = await canvasToBlob(runCanvas)
-      }
-      onVersionChosen({ standBlobs, runBlobs })
-      message.success('Saved character')
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
     <Card title="Pick this sheet">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -299,6 +356,9 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
           </Button>
           <Button onClick={grid.handleRemoveRow} disabled={!grid.rowBoundaries || grid.rows <= 1}>
             Remove row
+          </Button>
+          <Button onClick={grid.handleAutoAlignCols} disabled={!grid.colBoundaries || grid.cols < 2}>
+            Auto-align columns from first two
           </Button>
           <Button onClick={grid.handleAddCol} disabled={!grid.colBoundaries}>
             Add column
@@ -325,8 +385,8 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
                 >
                   Generate all videos
                 </Button>
-                <Button size="small" type="primary" loading={saving} onClick={handleUse}>
-                  Use this sheet
+                <Button size="small" icon={<DownloadOutlined />} loading={zippingAll} onClick={handleDownloadAllZip}>
+                  Download all (.zip)
                 </Button>
               </Space>
             }
@@ -374,9 +434,11 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
                     <Space size="middle" style={{ flex: 1 }} align="start">
                       {(['stand', 'run'] as const).map((slot) => {
                         const videoState = videoCellState(row, slot)
+                        const key: VideoCellKey = `${row}-${slot}`
+                        const direction = rowDirections[row]
                         return (
                           <div key={slot} style={{ width: 200 }}>
-                            <Space>
+                            <Space wrap>
                               <Button
                                 size="small"
                                 icon={<VideoCameraOutlined />}
@@ -390,6 +452,17 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
                               {videoState.status === 'generating' && (
                                 <Button size="small" danger icon={<StopOutlined />} onClick={() => stopVideoForCell(row, slot)}>
                                   Stop
+                                </Button>
+                              )}
+                              {videoState.videoUrl && (
+                                <Button
+                                  size="small"
+                                  icon={<ScissorOutlined />}
+                                  onClick={() =>
+                                    setCutTarget({ key, url: videoState.videoUrl!, title: `${direction}-${slot}` })
+                                  }
+                                >
+                                  Cut frames
                                 </Button>
                               )}
                             </Space>
@@ -508,6 +581,15 @@ export default function CharacterVersionPicker2({ imageUrl, description, onVersi
               ))}
             </Space>
           </Modal>
+        )}
+
+        {cutTarget && (
+          <Character2CutFramesModal
+            open
+            videoUrl={cutTarget.url}
+            title={cutTarget.title}
+            onClose={() => setCutTarget(null)}
+          />
         )}
       </Space>
     </Card>

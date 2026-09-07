@@ -71,6 +71,38 @@ export interface Character2 {
 }
 
 /**
+ * One video generated for a single (direction, pose) cell of a Characters-2
+ * sheet, kept as part of its session (see Character2VideoSession) so it can
+ * be viewed, re-downloaded, or batch-zipped after the page is closed and
+ * reopened — unlike rawVideoGenerations, which only exists to survive an
+ * in-progress pick and isn't addressed by direction/pose.
+ */
+export interface Character2VideoEntry {
+  direction: Direction8
+  pose: 'stand' | 'run'
+  prompt: string
+  videoBlob: Blob
+  createdAt: number
+}
+
+/**
+ * One "Pick this sheet" working session in the Characters-2 flow: the source
+ * sheet image plus every video generated from it so far. A session is
+ * created the first time a video is generated from a given sheet, and new
+ * videos for that same sheet are appended to it — this is what "Video
+ * history" lists and what the batch-zip-download button pulls from.
+ */
+export interface Character2VideoSession {
+  id: string
+  name: string
+  description: string
+  sheetImageBlob: Blob
+  videos: Character2VideoEntry[]
+  createdAt: number
+  updatedAt: number
+}
+
+/**
  * Every raw image returned by the generation API, saved immediately on
  * generation success — before the user has picked a version/variant from
  * it — so a generation is never lost or re-paid-for just because the user

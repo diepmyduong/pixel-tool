@@ -113,6 +113,38 @@ export async function composeFrameStrip(frames: HTMLCanvasElement[]): Promise<Bl
   })
 }
 
+/**
+ * Composes frame canvases into a single horizontal-strip PNG at their
+ * original captured size — no resize to VIDEO_SHEET_FRAME_SIZE, no margin,
+ * no offset. Cells share one uniform width/height (the max across all
+ * frames, since they're normally identical captures from the same video)
+ * so the strip stays a regular grid; each frame is centered in its cell.
+ */
+export async function composeOriginalFrameStrip(frames: HTMLCanvasElement[]): Promise<Blob> {
+  const cellWidth = Math.max(...frames.map((f) => f.width))
+  const cellHeight = Math.max(...frames.map((f) => f.height))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = frames.length * cellWidth
+  canvas.height = cellHeight
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Could not get 2D context')
+  ctx.imageSmoothingEnabled = false
+
+  frames.forEach((frame, i) => {
+    const dx = i * cellWidth + (cellWidth - frame.width) / 2
+    const dy = (cellHeight - frame.height) / 2
+    ctx.drawImage(frame, dx, dy)
+  })
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('Failed to convert canvas to blob'))
+    }, 'image/png')
+  })
+}
+
 export function downloadFrameStrip(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
