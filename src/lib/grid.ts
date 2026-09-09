@@ -87,6 +87,17 @@ export function buildCharacter2Layout(): Character2Cell[] {
 
 export const CHARACTER2_LAYOUT = buildCharacter2Layout()
 
+// --- Item-2: 2 columns (stand / attacked) x 8 direction rows, one item version per sheet ---
+// Items only ever have 2 poses, not 3 — there's no "run" pose for an object,
+// and "attacked" replaces Characters-2's "attack" (an item doesn't swing at
+// something, it reacts to being hit).
+export const ITEM2_GRID_COLS = 2
+export const ITEM2_GRID_ROWS = DIRECTION8_ORDER.length // 8
+export const ITEM2_GRID_CELLS = ITEM2_GRID_COLS * ITEM2_GRID_ROWS // 16
+
+export type Item2Pose = 'stand' | 'attacked'
+export const ITEM2_POSE_ORDER: Item2Pose[] = ['stand', 'attacked']
+
 export const ITEM_GRID_COLS = 6
 export const ITEM_GRID_ROWS = 11
 export const ITEM_GRID_CELLS = ITEM_GRID_COLS * ITEM_GRID_ROWS // 66

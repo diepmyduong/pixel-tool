@@ -11,6 +11,8 @@ import {
   CHAR_GRID_ROWS,
   CHAR_VERSIONS,
   DIRECTION_ORDER,
+  ITEM2_GRID_COLS,
+  ITEM2_GRID_ROWS,
   ITEM_GRID_COLS,
   ITEM_GRID_ROWS,
 } from "./grid";
@@ -174,6 +176,92 @@ export function buildCharacter2VideoPrompt(
     `The action: ${actionText}`,
     stationaryReinforcement,
     `Character reference: ${description}`,
+    `Audio: none. Do NOT include background music, and do NOT include any soundtrack or score. Silence, or incidental sound effects only.`,
+    "No text, no watermark, no logo, no UI overlay, no letterboxing anywhere in the video.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * Item-2 sheet: 2 columns (standing/intact / attacked/damaged) x 8 direction
+ * rows, a single item version per image — same 8-direction-row layout as
+ * buildCharacterPrompt2, but with the 3rd (attack) column dropped since an
+ * item doesn't swing at anything; its 2nd pose instead shows impact damage.
+ */
+export function buildItemPrompt2(
+  description: string,
+  styleTemplate: string,
+): string {
+  const standRows = DIRECTION8_ORDER.map(
+    (direction, i) =>
+      `Row ${i + 1}: standing/intact pose, undamaged, resting in its normal state, ${DIRECTION8_FACING_HINT[direction]}.`,
+  );
+  const attackedRows = DIRECTION8_ORDER.map(
+    (direction, i) =>
+      `Row ${i + 1}: attacked/damaged pose — the SAME item showing clear impact damage (cracks, chips, splinters, or dents appropriate to its material), still recognizably the same object and NOT destroyed or exploded, ${DIRECTION8_FACING_HINT[direction]}.`,
+  );
+  return [
+    `Item damage-state reference sheet, ${ITEM2_GRID_COLS}x${ITEM2_GRID_ROWS} grid (2 columns, ${ITEM2_GRID_ROWS} rows) on pure flat green screen background (solid chroma key green, #00FF00, no gradient, no shadow, no vignette, no texture anywhere on the background), each cell a separate isolated item render of the SAME single item version, no overlap between cells, no character or hand holding the item — item alone, centered in its cell.`,
+    `Column 1 (left column, all ${ITEM2_GRID_ROWS} cells top to bottom) is the item's STANDING/INTACT pose, one row per facing direction, in this exact row order:`,
+    ...standRows,
+    `Column 2 (right column, all ${ITEM2_GRID_ROWS} cells top to bottom) is the item's ATTACKED/DAMAGED pose, one row per facing direction, in this exact row order — the SAME direction as column 1's row in that same row position:`,
+    ...attackedRows,
+    "Cell dividers: 1 solid black pixel line between each cell, not part of the item or background, just a visual guide for the model to keep the grid layout correct.",
+    `Each item render must be centered in its cell with clear even padding (at least 15% of the cell's width and height) between the item's silhouette and the cell edge on all sides — never let any part of the item touch or cross the cell boundary.`,
+    styleTemplate,
+    `Item: ${description}`,
+    "No text, no watermark, no logo anywhere in the image.",
+  ].join("\n\n");
+}
+
+export type Item2Pose = "stand" | "attacked";
+
+/**
+ * Video prompt for one Item-2 cell (a pose + direction combination). The
+ * provided reference image is that exact cell's still frame — it must be
+ * treated as frame 0, not just a loose style reference, since the whole
+ * point is animating that specific pose/direction outward from where it
+ * already stands in the sheet. Mirrors buildCharacter2VideoPrompt's
+ * structure, but "attacked" describes the item reacting to an off-screen hit
+ * rather than the item performing a swing.
+ */
+export function buildItem2VideoPrompt(
+  pose: Item2Pose,
+  direction: Direction8,
+  description: string,
+): string {
+  const positionBlock =
+    pose === "stand"
+      ? `CRITICAL — fixed position, the item does NOT travel: the item is centered in frame and stays at that exact spot on screen for the entire clip. No sliding, no drifting, no entrance, no exit. By default the item is completely static, no movement at all — only if the item has an inherent idle motion of its own (e.g. a flag rippling, a candle flame flickering, water sloshing) may that specific motion show, and even then the item's base/footprint stays anchored to the same spot throughout. Frame 0, the middle frame, and the last frame all show the item at the exact same screen position.`
+      : `CRITICAL — fixed position, the item does NOT travel or get destroyed: the item is centered in frame and stays anchored at that exact spot on screen for the entire clip — no sliding, no flying off, no falling over, no disappearing, no entrance, no exit. Frame 0, the middle frame, and the last frame all show the item's base at the exact same screen position.`;
+
+  const actionText =
+    pose === "stand"
+      ? `sitting static and intact in place, ${DIRECTION8_FACING_HINT[direction]}. Camera fixed, nothing moves except any ambient motion inherent to the item itself (flickering, rippling, swaying in a breeze) — otherwise the item is perfectly still.`
+      : `reacting to a single off-screen impact (a thrown rock, sword strike, nearby explosion, or hammer blow — the attacker/weapon itself is never shown) — a clear single-impact beat: the hit lands, the item visibly reacts (cracks spread, it wobbles or shakes, chips or splinters fly off, it dents), then it settles back to rest, ${DIRECTION8_FACING_HINT[direction]}. The item ends the clip still clearly the same object, now visibly damaged — it does NOT shatter into pieces, explode, or disappear.`;
+
+  // Same "state it twice" reasoning as buildCharacter2VideoPrompt's
+  // stationaryReinforcement: the action line alone ("reacting to an impact")
+  // reads as license to let the item jump or slide, so the no-travel/no-
+  // destruction rule is restated right next to the action for the attacked
+  // pose. Stand doesn't need this: "sitting static" already leaves little
+  // room for misreading.
+  const stationaryReinforcement =
+    pose === "attacked"
+      ? "CRITICAL — the item's base/footprint stays planted on the same spot for the whole clip: no bouncing away, no toppling over and rolling off-screen, no vanishing at the moment of impact. Only cracks, chips, dents, wobble, or a brief shake may appear — the item is still sitting in the same place, still whole enough to recognize, when the clip ends."
+      : "";
+
+  return [
+    `${ANIMATION_VIDEO_SECONDS} second video, 16:9 frame, ONE single item only — never two copies, never a split screen, never a grid of panels.`,
+    `CRITICAL — the attached reference image is the exact starting frame of this video: frame 0 must match it as closely as possible (same pose, same facing, same framing, same item design) before any motion begins.`,
+    `Background: pure flat green screen (solid chroma key green, #00FF00), no gradient, no shadow, no vignette, no texture, nothing else in the background. This flat single-colour background exists specifically so the background can be keyed out afterwards — any shadow cast onto the background, any coloured rim light, or any green tint on the item itself will break that step.`,
+    `CRITICAL — fixed camera: no zoom, no push-in, no pull-out, no pan, no tilt, no orbit, no handheld shake, no rack focus. The camera is locked off for the entire clip and the item stays the same size on screen from first frame to last.`,
+    positionBlock,
+    `CRITICAL — fixed facing: the item keeps facing the same direction as the reference image (${DIRECTION8_FACING_HINT[direction]}) in frame 0, in the middle, and in the last frame. It never turns to face another direction.`,
+    `The action: ${actionText}`,
+    stationaryReinforcement,
+    `Item reference: ${description}`,
     `Audio: none. Do NOT include background music, and do NOT include any soundtrack or score. Silence, or incidental sound effects only.`,
     "No text, no watermark, no logo, no UI overlay, no letterboxing anywhere in the video.",
   ]

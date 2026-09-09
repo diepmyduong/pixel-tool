@@ -1,6 +1,7 @@
 import { Layout, Menu, Typography } from 'antd'
 import {
   AppstoreOutlined,
+  GiftOutlined,
   PictureOutlined,
   UserOutlined,
   VideoCameraAddOutlined,
@@ -10,6 +11,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import CharactersPage from './routes/Characters/CharactersPage'
 import Characters2Page from './routes/Characters2/Characters2Page'
 import ItemsPage from './routes/Items/ItemsPage'
+import Items2Page from './routes/Items2/Items2Page'
 import AnimationsPage from './routes/Animations/AnimationsPage'
 import AnimationsByImagePage from './routes/AnimationsByImage/AnimationsByImagePage'
 import AnimationsVideoV2Page from './routes/AnimationsVideoV2/AnimationsVideoV2Page'
@@ -20,6 +22,7 @@ const menuItems = [
   { key: '/characters', icon: <UserOutlined />, label: 'Characters' },
   { key: '/characters-2', icon: <UserOutlined />, label: 'Characters-2' },
   { key: '/items', icon: <AppstoreOutlined />, label: 'Items' },
+  { key: '/item-2', icon: <GiftOutlined />, label: 'Item-2' },
   { key: '/animations', icon: <VideoCameraOutlined />, label: 'Animations (Video)' },
   { key: '/animations-by-image', icon: <PictureOutlined />, label: 'Animations (Image)' },
   { key: '/animations-video-v2', icon: <VideoCameraAddOutlined />, label: 'Animations (Video v2)' },
@@ -52,6 +55,7 @@ function App() {
             <Route path="/characters" element={<CharactersPage />} />
             <Route path="/characters-2" element={<Characters2Page />} />
             <Route path="/items" element={<ItemsPage />} />
+            <Route path="/item-2" element={<Items2Page />} />
             <Route path="/animations" element={<AnimationsPage />} />
             <Route path="/animations-by-image" element={<AnimationsByImagePage />} />
             <Route path="/animations-video-v2" element={<AnimationsVideoV2Page />} />

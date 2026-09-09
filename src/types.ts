@@ -110,6 +110,45 @@ export interface Character2VideoSession {
 }
 
 /**
+ * One video generated for a single (direction, pose) cell of an Item-2
+ * sheet, kept as part of its session (see Item2VideoSession) so it can be
+ * viewed, re-downloaded, or batch-zipped after the page is closed and
+ * reopened — mirrors Character2VideoEntry, but with the 3-pose stand/run/attack
+ * set collapsed to 2 poses (stand/attacked) since items don't run or swing.
+ */
+export interface Item2VideoEntry {
+  direction: Direction8
+  pose: 'stand' | 'attacked'
+  prompt: string
+  videoBlob: Blob
+  createdAt: number
+  /**
+   * The sprite sheet PNG produced by cutting/tuning/editing this video's
+   * frames, saved from the Sprite Sheet Editor's "Save to Video history"
+   * button — kept alongside the source video so re-opening this session
+   * later shows the finished sheet without re-cutting the video.
+   */
+  spriteSheetBlob?: Blob
+}
+
+/**
+ * One "Pick this sheet" working session in the Item-2 flow: the source sheet
+ * image plus every video generated from it so far. Mirrors
+ * Character2VideoSession — a session is created the first time a video is
+ * generated from a given sheet, and new videos for that same sheet are
+ * appended to it.
+ */
+export interface Item2VideoSession {
+  id: string
+  name: string
+  description: string
+  sheetImageBlob: Blob
+  videos: Item2VideoEntry[]
+  createdAt: number
+  updatedAt: number
+}
+
+/**
  * Every raw image returned by the generation API, saved immediately on
  * generation success — before the user has picked a version/variant from
  * it — so a generation is never lost or re-paid-for just because the user
@@ -117,7 +156,7 @@ export interface Character2VideoSession {
  */
 export interface RawGeneration {
   id: string
-  kind: 'character' | 'character2' | 'item' | 'animation'
+  kind: 'character' | 'character2' | 'item' | 'item2' | 'animation'
   prompt: string
   imageBlob: Blob
   createdAt: number

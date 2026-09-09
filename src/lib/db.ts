@@ -7,6 +7,7 @@ import type {
   Character2VideoSession,
   ImageAnimation,
   Item,
+  Item2VideoSession,
   RawGeneration,
   RawVideoGeneration,
   VideoAnimation,
@@ -16,6 +17,7 @@ interface SpriteDashboardDB extends DBSchema {
   characters: { key: string; value: Character }
   characters2: { key: string; value: Character2 }
   character2VideoSessions: { key: string; value: Character2VideoSession }
+  item2VideoSessions: { key: string; value: Item2VideoSession }
   rawGenerations: { key: string; value: RawGeneration; indexes: { kind: string } }
   items: { key: string; value: Item }
   rawVideoGenerations: { key: string; value: RawVideoGeneration }
@@ -29,7 +31,7 @@ let dbPromise: Promise<IDBPDatabase<SpriteDashboardDB>> | null = null
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<SpriteDashboardDB>('sprite-dashboard', 11, {
+    dbPromise = openDB<SpriteDashboardDB>('sprite-dashboard', 12, {
       upgrade(db) {
         if (!db.objectStoreNames.contains('characters')) {
           db.createObjectStore('characters', { keyPath: 'id' })
@@ -39,6 +41,9 @@ function getDB() {
         }
         if (!db.objectStoreNames.contains('character2VideoSessions')) {
           db.createObjectStore('character2VideoSessions', { keyPath: 'id' })
+        }
+        if (!db.objectStoreNames.contains('item2VideoSessions')) {
+          db.createObjectStore('item2VideoSessions', { keyPath: 'id' })
         }
         if (!db.objectStoreNames.contains('rawGenerations')) {
           const rawGenerations = db.createObjectStore('rawGenerations', { keyPath: 'id' })
@@ -115,6 +120,21 @@ export async function getCharacter2VideoSession(id: string): Promise<Character2V
 export async function listCharacter2VideoSessions(): Promise<Character2VideoSession[]> {
   const db = await getDB()
   return db.getAll('character2VideoSessions')
+}
+
+export async function saveItem2VideoSession(session: Item2VideoSession): Promise<void> {
+  const db = await getDB()
+  await db.put('item2VideoSessions', session)
+}
+
+export async function getItem2VideoSession(id: string): Promise<Item2VideoSession | undefined> {
+  const db = await getDB()
+  return db.get('item2VideoSessions', id)
+}
+
+export async function listItem2VideoSessions(): Promise<Item2VideoSession[]> {
+  const db = await getDB()
+  return db.getAll('item2VideoSessions')
 }
 
 export async function saveRawGeneration(generation: RawGeneration): Promise<void> {
