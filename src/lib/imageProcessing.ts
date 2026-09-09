@@ -66,21 +66,42 @@ export async function sliceCells(
   return cells
 }
 
-const CHROMA_KEY = { r: 0, g: 255, b: 0 }
+export type ChromaKeyColor = 'green' | 'black' | 'gray' | 'blue' | 'white'
+
+const CHROMA_KEY_RGB: Record<ChromaKeyColor, { r: number; g: number; b: number }> = {
+  green: { r: 0, g: 255, b: 0 },
+  black: { r: 0, g: 0, b: 0 },
+  gray: { r: 128, g: 128, b: 128 },
+  blue: { r: 0, g: 0, b: 255 },
+  white: { r: 255, g: 255, b: 255 },
+}
 
 /**
- * Removes near-green pixels to transparent, with a despill pass on
- * remaining edge pixels. Uses a soft falloff band (innerThreshold to
- * outerThreshold) instead of one hard cutoff: pixels closer to pure green
- * than innerThreshold are fully transparent, pixels farther than
- * outerThreshold are left untouched, and pixels in between are partially
- * transparent — this smooths the green-to-opaque boundary so a thin ring
- * of dark, semi-keyed pixels (grid-line/anti-alias fringe) doesn't survive
- * as a hard dark rim around the sprite.
+ * Removes pixels near any of the given background `colors` to transparent,
+ * with a despill pass on remaining green-fringe edge pixels (despill only
+ * applies when 'green' is among the requested colors — there's no
+ * equivalent fringe correction for the achromatic colors). Uses a soft
+ * falloff band (innerThreshold to outerThreshold) instead of one hard
+ * cutoff: pixels closer than innerThreshold to the nearest requested color
+ * are fully transparent, pixels farther than outerThreshold are left
+ * untouched, and pixels in between are partially transparent — this smooths
+ * the key-to-opaque boundary so a thin ring of dark, semi-keyed pixels
+ * (grid-line/anti-alias fringe) doesn't survive as a hard dark rim around
+ * the sprite. If `colors` is empty this is a no-op.
  */
-export function chromaKey(canvas: HTMLCanvasElement, innerThreshold = 90, outerThreshold = 140): HTMLCanvasElement {
+export function chromaKey(
+  canvas: HTMLCanvasElement,
+  colors: ChromaKeyColor[],
+  innerThreshold = 90,
+  outerThreshold = 140,
+): HTMLCanvasElement {
+  if (colors.length === 0) return canvas
+
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Could not get 2D context')
+
+  const targets = colors.map((c) => CHROMA_KEY_RGB[c])
+  const despillGreen = colors.includes('green')
 
   const { width, height } = canvas
   const imageData = ctx.getImageData(0, 0, width, height)
@@ -91,17 +112,21 @@ export function chromaKey(canvas: HTMLCanvasElement, innerThreshold = 90, outerT
     const g = data[i + 1]
     const b = data[i + 2]
 
-    const dist = Math.sqrt((r - CHROMA_KEY.r) ** 2 + (g - CHROMA_KEY.g) ** 2 + (b - CHROMA_KEY.b) ** 2)
+    let dist = Infinity
+    for (const t of targets) {
+      const d = Math.sqrt((r - t.r) ** 2 + (g - t.g) ** 2 + (b - t.b) ** 2)
+      if (d < dist) dist = d
+    }
 
     if (dist < innerThreshold) {
       data[i + 3] = 0 // fully transparent
     } else if (dist < outerThreshold) {
       const falloff = (dist - innerThreshold) / (outerThreshold - innerThreshold)
       data[i + 3] = Math.round(data[i + 3] * falloff)
-      if (g > r && g > b) {
+      if (despillGreen && g > r && g > b) {
         data[i + 1] = Math.round((r + b) / 2)
       }
-    } else if (g > r && g > b) {
+    } else if (despillGreen && g > r && g > b) {
       // Despill: pixel survived the key but still leans green (edge fringe) — pull green
       // channel down toward the average of red/blue so no green halo remains.
       data[i + 1] = Math.round((r + b) / 2)

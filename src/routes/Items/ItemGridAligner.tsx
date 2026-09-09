@@ -26,7 +26,7 @@ export default function ItemGridAligner({ imageUrl, onSliced }: ItemGridAlignerP
       SLICE_INSET_PX,
     )
     for (const canvas of cells) {
-      if (canvas) chromaKey(canvas)
+      if (canvas) chromaKey(canvas, ['green'])
     }
     onSliced(cells)
   }

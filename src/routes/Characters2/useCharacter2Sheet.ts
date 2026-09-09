@@ -360,7 +360,7 @@ export function useCharacter2Sheet({ imageUrl, imageBlob, name, description, onV
     if (!pickerTarget) return false
     try {
       const canvas = await fileToCanvas(file)
-      chromaKey(canvas)
+      chromaKey(canvas, ['green'])
       let uploadIndex = -1
       setUploadedCanvases((prev) => {
         uploadIndex = prev.length

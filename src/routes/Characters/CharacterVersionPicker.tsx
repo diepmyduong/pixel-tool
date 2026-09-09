@@ -32,7 +32,7 @@ export default function CharacterVersionPicker({ imageUrl, onVersionChosen }: Ch
       SLICE_INSET_PX,
     )
     for (const canvas of cells) {
-      if (canvas) chromaKey(canvas)
+      if (canvas) chromaKey(canvas, ['green'])
     }
     setSliced(cells)
   }

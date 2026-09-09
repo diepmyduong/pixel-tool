@@ -31,7 +31,7 @@ export default function AnimationImageGridAligner({ imageUrl, onSliced, onRegene
       SLICE_INSET_PX,
     )
     const framed = cells.map((canvas) =>
-      canvas ? fitCanvasToFrame(chromaKey(canvas), FRAME_SIZE_PX, FRAME_MARGIN_PX) : undefined,
+      canvas ? fitCanvasToFrame(chromaKey(canvas, ['green']), FRAME_SIZE_PX, FRAME_MARGIN_PX) : undefined,
     )
     onSliced(framed, cols)
   }

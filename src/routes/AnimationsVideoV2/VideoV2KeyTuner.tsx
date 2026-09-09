@@ -39,7 +39,7 @@ async function rekeyFrame(frame: CutFrame, inner: number, outer: number): Promis
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Could not get 2D context')
     ctx.drawImage(img, 0, 0)
-    chromaKey(canvas, inner, outer)
+    chromaKey(canvas, ['green'], inner, outer)
     const keyedBlob = await canvasToBlob(canvas)
     const url = URL.createObjectURL(keyedBlob)
     return { ...frame, keyedBlob, url }

@@ -84,7 +84,7 @@ export default function VideoV2FrameCutter({
   async function cutFrameAt(timestamp: number): Promise<CutFrame> {
     const canvas = await captureFullFrame(videoUrl, timestamp)
     const rawBlob = await canvasToBlob(canvas)
-    chromaKey(canvas)
+    chromaKey(canvas, ['green'])
     const keyedBlob = await canvasToBlob(canvas)
     const url = URL.createObjectURL(keyedBlob)
     const frame: CutFrame = { id: crypto.randomUUID(), timestamp, rawBlob, keyedBlob, url }

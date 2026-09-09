@@ -3,6 +3,7 @@ import {
   AppstoreOutlined,
   GiftOutlined,
   PictureOutlined,
+  ScissorOutlined,
   UserOutlined,
   VideoCameraAddOutlined,
   VideoCameraOutlined,
@@ -15,10 +16,12 @@ import Items2Page from './routes/Items2/Items2Page'
 import AnimationsPage from './routes/Animations/AnimationsPage'
 import AnimationsByImagePage from './routes/AnimationsByImage/AnimationsByImagePage'
 import AnimationsVideoV2Page from './routes/AnimationsVideoV2/AnimationsVideoV2Page'
+import FreeCropPage from './routes/FreeCrop/FreeCropPage'
 
 const { Sider, Content, Header } = Layout
 
 const menuItems = [
+  { key: '/free-crop', icon: <ScissorOutlined />, label: 'Free Crop' },
   { key: '/characters', icon: <UserOutlined />, label: 'Characters' },
   { key: '/characters-2', icon: <UserOutlined />, label: 'Characters-2' },
   { key: '/items', icon: <AppstoreOutlined />, label: 'Items' },
@@ -52,6 +55,7 @@ function App() {
         <Content style={{ padding: 24, overflow: 'auto' }}>
           <Routes>
             <Route path="/" element={<Navigate to="/characters" replace />} />
+            <Route path="/free-crop" element={<FreeCropPage />} />
             <Route path="/characters" element={<CharactersPage />} />
             <Route path="/characters-2" element={<Characters2Page />} />
             <Route path="/items" element={<ItemsPage />} />

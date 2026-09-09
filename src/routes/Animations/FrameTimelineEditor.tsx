@@ -158,7 +158,7 @@ export default function FrameTimelineEditor({
         const frameBlobs: Blob[] = []
         for (const timestamp of timestamps) {
           const canvas = await extractFrame(videoUrl, timestamp, rect)
-          chromaKey(canvas)
+          chromaKey(canvas, ['green'])
           frameBlobs.push(await canvasToBlob(canvas))
         }
         byDirection[direction] = { frameBlobs, frameTimestamps: timestamps }
