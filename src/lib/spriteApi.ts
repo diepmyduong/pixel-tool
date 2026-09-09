@@ -41,7 +41,15 @@ interface JobResultResponse {
     id: string;
     status: JobStatus;
     progress: number;
-    resultData?: { images?: GeneratedImage[] };
+    // Image generation returns resultData.images[]. upsample-image instead
+    // returns a single result whose imageUrl/fifeUrl are empty strings — the
+    // actual image comes back inline as base64 in imageBytes.
+    resultData?: {
+      images?: GeneratedImage[];
+      imageUrl?: string;
+      imageBytes?: string;
+      mimeType?: string;
+    };
     errorMessage?: string | null;
   };
 }
@@ -189,26 +197,49 @@ export async function generateVideo(
   return { videoUri: result.resultData.videoUri };
 }
 
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const byteChars = atob(base64);
+  const byteNumbers = new Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    byteNumbers[i] = byteChars.charCodeAt(i);
+  }
+  return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
+}
+
+/**
+ * Upscales a previously generated image to 2K/4K. Returns a Blob directly
+ * (not a URL) — unlike generateImage/generateVideo, this endpoint's result
+ * comes back with empty imageUrl/fifeUrl strings and the actual image
+ * inline as base64 in resultData.imageBytes, so there's nothing to fetch().
+ */
 export async function upsampleImage(
   flow2RequestId: string,
+  resolution: "2K" | "4K" = "4K",
   onProgress?: (progress: JobProgress) => void,
-): Promise<string> {
+): Promise<Blob> {
   const res = await fetch(`${API_BASE}/upsample-image`, {
     method: "POST",
     headers: {
       "x-api-key": apiKey(),
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ resolution: "4K", flow2RequestId }),
+    body: JSON.stringify({ resolution, flow2RequestId }),
   });
   if (!res.ok) {
     throw new Error(`Upsample request failed: ${await errorDetail(res)}`);
   }
   const created: JobCreateResponse = await res.json();
   const result = await pollJob(created.jobId, onProgress);
-  const image = result.resultData?.images?.[0];
-  if (!image) {
-    throw new Error("Upsample succeeded but returned no image");
+  const data = result.resultData;
+
+  if (data?.imageBytes) {
+    return base64ToBlob(data.imageBytes, data.mimeType || "image/jpeg");
   }
-  return image.imageUrl;
+  const imageUrl = data?.imageUrl || data?.images?.[0]?.imageUrl;
+  if (imageUrl) {
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) throw new Error(`Failed to download upscaled image: ${imgRes.status} ${imgRes.statusText}`);
+    return imgRes.blob();
+  }
+  throw new Error("Upsample succeeded but returned no image");
 }

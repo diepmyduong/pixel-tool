@@ -51,13 +51,13 @@ export function versionCells(version: number): CharacterCell[] {
   return CHARACTER_LAYOUT.filter((c) => c.version === version)
 }
 
-// --- Characters-2: 2 columns (stand / run) x 8 direction rows, one character version per sheet ---
-export const CHAR2_GRID_COLS = 2
+// --- Characters-2: 3 columns (stand / run / attack) x 8 direction rows, one character version per sheet ---
+export const CHAR2_GRID_COLS = 3
 export const CHAR2_GRID_ROWS = DIRECTION8_ORDER.length // 8
-export const CHAR2_GRID_CELLS = CHAR2_GRID_COLS * CHAR2_GRID_ROWS // 16
+export const CHAR2_GRID_CELLS = CHAR2_GRID_COLS * CHAR2_GRID_ROWS // 24
 
-export type Character2Pose = 'stand' | 'run'
-export const CHARACTER2_POSE_ORDER: Character2Pose[] = ['stand', 'run']
+export type Character2Pose = 'stand' | 'run' | 'attack'
+export const CHARACTER2_POSE_ORDER: Character2Pose[] = ['stand', 'run', 'attack']
 
 export interface Character2Cell {
   cellIndex: number

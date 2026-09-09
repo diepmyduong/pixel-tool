@@ -145,6 +145,52 @@ export async function composeOriginalFrameStrip(frames: HTMLCanvasElement[]): Pr
   })
 }
 
+/**
+ * Scales the whole source canvas (not just its opaque silhouette, and with
+ * no margin/offset) down or up to fit within `size`x`size`, preserving
+ * aspect ratio, centered on a transparent canvas — a plain resize for the
+ * "download at size" button, independent of the pixel-fit margin/offset
+ * workflow in fitFrameWithOffset.
+ */
+export function scaleCanvasToSize(source: HTMLCanvasElement, size: number): HTMLCanvasElement {
+  const out = document.createElement('canvas')
+  out.width = size
+  out.height = size
+  const ctx = out.getContext('2d')
+  if (!ctx) throw new Error('Could not get 2D context')
+  ctx.imageSmoothingEnabled = false
+
+  const scale = Math.min(size / source.width, size / source.height)
+  const drawWidth = source.width * scale
+  const drawHeight = source.height * scale
+  const dx = (size - drawWidth) / 2
+  const dy = (size - drawHeight) / 2
+
+  ctx.drawImage(source, 0, 0, source.width, source.height, dx, dy, drawWidth, drawHeight)
+  return out
+}
+
+/** Composes canvases already scaled to a shared `size`x`size` into a single horizontal-strip PNG. */
+export async function composeScaledFrameStrip(frames: HTMLCanvasElement[], size: number): Promise<Blob> {
+  const canvas = document.createElement('canvas')
+  canvas.width = frames.length * size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Could not get 2D context')
+  ctx.imageSmoothingEnabled = false
+
+  frames.forEach((frame, i) => {
+    ctx.drawImage(frame, i * size, 0)
+  })
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('Failed to convert canvas to blob'))
+    }, 'image/png')
+  })
+}
+
 export function downloadFrameStrip(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')

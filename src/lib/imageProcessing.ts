@@ -168,6 +168,42 @@ export function fitCanvasToFrame(canvas: HTMLCanvasElement, size: number, margin
   return out
 }
 
+/** A crop rectangle expressed as fractions (0-1) of the source image's width/height. */
+export interface CropRatioRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * Crops a blob to the given fractional rectangle, at the source's native
+ * resolution (no resize) — used to re-crop every frame in a cut stack to a
+ * shared region picked by dragging a box over the preview, which is defined
+ * in ratio space so it applies correctly regardless of each frame's actual
+ * pixel size.
+ */
+export async function cropBlobByRatio(blob: Blob, rect: CropRatioRect): Promise<Blob> {
+  const url = URL.createObjectURL(blob)
+  try {
+    const img = await loadImage(url)
+    const sx = Math.round(rect.x * img.naturalWidth)
+    const sy = Math.round(rect.y * img.naturalHeight)
+    const sw = Math.max(1, Math.round(rect.width * img.naturalWidth))
+    const sh = Math.max(1, Math.round(rect.height * img.naturalHeight))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = sw
+    canvas.height = sh
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Could not get 2D context')
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+    return canvasToBlob(canvas)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {

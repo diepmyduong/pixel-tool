@@ -1,4 +1,4 @@
-import { Button, Card, Input, Space, Typography, Upload, message } from 'antd'
+import { Button, Input, Space, Typography, Upload, message } from 'antd'
 import { CopyOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { DEFAULT_STYLE_TEMPLATE } from '../../lib/styleTemplate'
 import { buildCharacterPrompt2 } from '../../lib/promptBuilder'
@@ -29,8 +29,7 @@ export default function CharacterPromptPanel2({
   const prompt = buildCharacterPrompt2(description, styleTemplate)
 
   return (
-    <Card title="Character">
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+    <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <div>
           <Typography.Text strong>Name</Typography.Text>
           <Input value={name} onChange={(e) => onNameChange(e.target.value)} placeholder="e.g. Rook" />
@@ -108,7 +107,6 @@ export default function CharacterPromptPanel2({
           </Space>
           <TextArea value={prompt} readOnly rows={8} style={{ fontFamily: 'monospace', fontSize: 12 }} />
         </div>
-      </Space>
-    </Card>
+    </Space>
   )
 }

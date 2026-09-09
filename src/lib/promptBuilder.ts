@@ -53,10 +53,10 @@ const DIRECTION8_FACING_HINT: Record<Direction8, string> = {
 };
 
 /**
- * Character-2 sheet: 2 columns (standing / running) x 8 direction rows, a
- * single character version per image — unlike buildCharacterPrompt's static
- * turnaround views, every cell shows the same 8 movement-facing directions,
- * just in a different pose per column.
+ * Character-2 sheet: 3 columns (standing / running / attacking) x 8 direction
+ * rows, a single character version per image — unlike buildCharacterPrompt's
+ * static turnaround views, every cell shows the same 8 movement-facing
+ * directions, just in a different pose per column.
  */
 export function buildCharacterPrompt2(
   description: string,
@@ -70,12 +70,18 @@ export function buildCharacterPrompt2(
     (direction, i) =>
       `Row ${i + 1}: running pose (mid-stride, clearly airborne/pushing-off leg and pumping arms, not just standing), ${DIRECTION8_FACING_HINT[direction]}.`,
   );
+  const attackRows = DIRECTION8_ORDER.map(
+    (direction, i) =>
+      `Row ${i + 1}: melee attack pose (mid-swing at the peak of a strike — weapon or fist extended, clear windup-to-impact body torque, not a neutral stance), ${DIRECTION8_FACING_HINT[direction]}.`,
+  );
   return [
-    `Character movement-direction reference sheet, ${CHAR2_GRID_COLS}x${CHAR2_GRID_ROWS} grid (2 columns, ${CHAR2_GRID_ROWS} rows) on pure flat green screen background (solid chroma key green, #00FF00, no gradient, no shadow, no vignette, no texture anywhere on the background), each cell a separate isolated full-body pose of the SAME single character version, no overlap between cells.`,
+    `Character movement-direction reference sheet, ${CHAR2_GRID_COLS}x${CHAR2_GRID_ROWS} grid (3 columns, ${CHAR2_GRID_ROWS} rows) on pure flat green screen background (solid chroma key green, #00FF00, no gradient, no shadow, no vignette, no texture anywhere on the background), each cell a separate isolated full-body pose of the SAME single character version, no overlap between cells.`,
     `Column 1 (left column, all ${CHAR2_GRID_ROWS} cells top to bottom) is the character's STANDING/IDLE pose, one row per movement direction, in this exact row order:`,
     ...standRows,
-    `Column 2 (right column, all ${CHAR2_GRID_ROWS} cells top to bottom) is the character's RUNNING pose, one row per movement direction, in this exact row order — the SAME direction as column 1's row in that same row position:`,
+    `Column 2 (middle column, all ${CHAR2_GRID_ROWS} cells top to bottom) is the character's RUNNING pose, one row per movement direction, in this exact row order — the SAME direction as column 1's row in that same row position:`,
     ...runRows,
+    `Column 3 (right column, all ${CHAR2_GRID_ROWS} cells top to bottom) is the character's ATTACKING pose, one row per movement direction, in this exact row order — the SAME direction as columns 1 and 2's row in that same row position:`,
+    ...attackRows,
     "Cell dividers: 1 solid black pixel line between each cell, not part of the character or background, just a visual guide for the model to keep the grid layout correct.",
     `Each character pose must be centered in its cell with clear even padding (at least 10% of the cell's width and height) between the character's silhouette and the cell edge on all sides — never let hands, feet, hair, weapons, or hat brims touch or cross the cell boundary.`,
     styleTemplate,
@@ -101,7 +107,22 @@ const DIRECTION8_MOTION_HINT: Record<Direction8, string> = {
   down_left: "running at a 45-degree diagonal, halfway between down and left, toward the lower-left corner of the screen",
 };
 
-export type Character2Pose = "stand" | "run";
+// Same "one plain instruction" reasoning as DIRECTION8_MOTION_HINT above,
+// but phrased for a strike's aim rather than a run's travel path — reusing
+// the run hint's wording ("running at a diagonal...") for an attack read as
+// nonsense ("aimed toward running at a diagonal").
+const DIRECTION8_ATTACK_AIM_HINT: Record<Direction8, string> = {
+  up: "straight up, toward the top of the screen",
+  down: "straight down, toward the bottom of the screen",
+  left: "straight left, toward the left of the screen",
+  right: "straight right, toward the right of the screen",
+  up_right: "a 45-degree diagonal toward the upper-right corner of the screen",
+  up_left: "a 45-degree diagonal toward the upper-left corner of the screen",
+  down_right: "a 45-degree diagonal toward the lower-right corner of the screen",
+  down_left: "a 45-degree diagonal toward the lower-left corner of the screen",
+};
+
+export type Character2Pose = "stand" | "run" | "attack";
 
 /**
  * Video prompt for one Character-2 cell (a pose + direction combination).
@@ -118,22 +139,30 @@ export function buildCharacter2VideoPrompt(
   const positionBlock =
     pose === "stand"
       ? `CRITICAL — fixed position, this is an IDLE animation, the character does NOT travel: the character is centered in frame and stays at that exact spot on screen for the entire clip. No walking, no running, no stepping forward or sideways, no drifting, no entrance, no exit. Only a subtle idle motion is allowed — light bobbing/swaying in place, hair and clothing fluttering gently in a breeze, weight shifting slightly — and the character's feet stay planted on the same spot throughout. Frame 0, the middle frame, and the last frame all show the character at the exact same screen position.`
-      : `CRITICAL — this is a RUN-IN-PLACE animation, the character does NOT travel across the frame: even though the action being performed is running (${DIRECTION8_MOTION_HINT[direction]}), the character's body stays centered in frame and anchored to the same spot on screen for the entire clip, exactly like running on a treadmill — legs stride and arms pump as if covering ground, but the character never actually moves toward the edge of the frame, never drifts, and never exits. Frame 0, the middle frame, and the last frame all show the character at the exact same screen position.`;
+      : pose === "run"
+        ? `CRITICAL — this is a RUN-IN-PLACE animation, the character does NOT travel across the frame: even though the action being performed is running (${DIRECTION8_MOTION_HINT[direction]}), the character's body stays centered in frame and anchored to the same spot on screen for the entire clip, exactly like running on a treadmill — legs stride and arms pump as if covering ground, but the character never actually moves toward the edge of the frame, never drifts, and never exits. Frame 0, the middle frame, and the last frame all show the character at the exact same screen position.`
+        : `CRITICAL — fixed position, the character does NOT travel: the character is centered in frame and stays at that exact spot on screen for the entire clip. The attack (weapon swing, punch, or lunge) may extend a limb or weapon outward, but the character's feet/body root stay planted on the same spot — no stepping forward into the attack, no dashing, no drifting, no entrance, no exit. Frame 0, the middle frame, and the last frame all show the character's body at the exact same screen position.`;
 
   const actionText =
     pose === "stand"
       ? `standing still in place, not walking or running, ${DIRECTION8_FACING_HINT[direction]}.`
-      : `running in place at a steady pace, with a clear full-body run cycle (arms pumping, legs striding, slight bounce): ${DIRECTION8_MOTION_HINT[direction]}.`;
+      : pose === "run"
+        ? `running in place at a steady pace, with a clear full-body run cycle (arms pumping, legs striding, slight bounce): ${DIRECTION8_MOTION_HINT[direction]}.`
+        : `performing a single melee attack in place — a clear windup, a fast strike/swing at full extension, then recovery back to a ready stance — aimed ${DIRECTION8_ATTACK_AIM_HINT[direction]}, ${DIRECTION8_FACING_HINT[direction]}.`;
 
   // Repeated as its own standalone line right after the action, on top of
   // positionBlock above — the single earlier "fixed position" paragraph was
   // sometimes outweighed by the action line ("standing" still read as license
-  // to take a step), so the no-movement rule for stand is now stated twice,
-  // once in the general position rules and once right next to the action.
-  const standReinforcement =
+  // to take a step), so the no-movement rule for stand/attack is stated
+  // twice, once in the general position rules and once right next to the
+  // action. Run is exempt: "run-in-place" already states its own no-travel
+  // rule inline, tailored to a locomotion cycle rather than a single strike.
+  const stationaryReinforcement =
     pose === "stand"
       ? "CRITICAL — the character must remain completely stationary for the whole clip: no steps, no shifting to a different spot, no leaning that moves the body's center off its starting point. Any movement is limited to idle sway/breathing/hair/clothing motion that returns to the same spot, never a step or a walk."
-      : "";
+      : pose === "attack"
+        ? "CRITICAL — the character's feet and body root stay planted on the same spot for the whole clip: no stepping into the strike, no lunging forward, no dashing toward a target. Only the attacking limb/weapon and the body's rotation/lean during the swing may move — the character ends the clip standing on the same spot it started on."
+        : "";
 
   return [
     `${ANIMATION_VIDEO_SECONDS} second video, 16:9 frame, ONE single character only — never two copies, never a split screen, never a grid of panels.`,
@@ -143,7 +172,7 @@ export function buildCharacter2VideoPrompt(
     positionBlock,
     `CRITICAL — fixed facing: the character keeps facing the same direction as the reference image (${DIRECTION8_FACING_HINT[direction]}) in frame 0, in the middle, and in the last frame. It never turns to face another direction.`,
     `The action: ${actionText}`,
-    standReinforcement,
+    stationaryReinforcement,
     `Character reference: ${description}`,
     `Audio: none. Do NOT include background music, and do NOT include any soundtrack or score. Silence, or incidental sound effects only.`,
     "No text, no watermark, no logo, no UI overlay, no letterboxing anywhere in the video.",

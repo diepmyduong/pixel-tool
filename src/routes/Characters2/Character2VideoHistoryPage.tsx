@@ -1,13 +1,20 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Button, Card, Collapse, Empty, Space, Tag, Typography, message } from 'antd'
 import { DownloadOutlined, ScissorOutlined } from '@ant-design/icons'
-import type { Character2VideoSession } from '../../types'
+import type { Character2VideoEntry, Character2VideoSession } from '../../types'
 import { listCharacter2VideoSessions } from '../../lib/db'
 import { downloadVideosAsZip } from '../../lib/videoZip'
 import Character2CutFramesModal from './Character2CutFramesModal'
 
 interface Character2VideoHistoryPageProps {
   refreshKey: number
+  onSpriteSheetSaved?: () => void
+}
+
+const POSE_COLOR: Record<Character2VideoEntry['pose'], string> = {
+  stand: 'blue',
+  run: 'green',
+  attack: 'volcano',
 }
 
 function sessionZipFilename(session: Character2VideoSession): string {
@@ -15,7 +22,7 @@ function sessionZipFilename(session: Character2VideoSession): string {
   return `${safeName}_videos_${session.id.slice(0, 8)}.zip`
 }
 
-function SessionCard({ session }: { session: Character2VideoSession }) {
+function SessionCard({ session, onSessionUpdated }: { session: Character2VideoSession; onSessionUpdated: () => void }) {
   const [urls, setUrls] = useState<string[]>([])
   const [zipping, setZipping] = useState(false)
   const [cutTarget, setCutTarget] = useState<{ index: number; url: string } | null>(null)
@@ -58,9 +65,9 @@ function SessionCard({ session }: { session: Character2VideoSession }) {
       <Typography.Text type="secondary">{new Date(session.createdAt).toLocaleString()}</Typography.Text>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
         {session.videos.map((video, index) => (
-          <div key={index} style={{ width: 180 }}>
+          <div key={index} style={{ width: 300 }}>
             <Space size={4} style={{ marginBottom: 4 }}>
-              <Tag color={video.pose === 'stand' ? 'blue' : 'green'}>{video.pose}</Tag>
+              <Tag color={POSE_COLOR[video.pose]}>{video.pose}</Tag>
               <Tag>{video.direction}</Tag>
             </Space>
             {urls[index] && (
@@ -96,6 +103,8 @@ function SessionCard({ session }: { session: Character2VideoSession }) {
           open
           videoUrl={cutTarget.url}
           title={`${session.videos[cutTarget.index].direction}-${session.videos[cutTarget.index].pose}`}
+          saveTarget={{ sessionId: session.id, videoIndex: cutTarget.index }}
+          onSpriteSheetSaved={onSessionUpdated}
           onClose={() => setCutTarget(null)}
         />
       )}
@@ -103,8 +112,9 @@ function SessionCard({ session }: { session: Character2VideoSession }) {
   )
 }
 
-function Character2VideoHistoryPage({ refreshKey }: Character2VideoHistoryPageProps) {
+function Character2VideoHistoryPage({ refreshKey, onSpriteSheetSaved }: Character2VideoHistoryPageProps) {
   const [sessions, setSessions] = useState<Character2VideoSession[]>([])
+  const [localRefreshKey, setLocalRefreshKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -115,15 +125,21 @@ function Character2VideoHistoryPage({ refreshKey }: Character2VideoHistoryPagePr
     return () => {
       cancelled = true
     }
-  }, [refreshKey])
+  }, [refreshKey, localRefreshKey])
+
+  function handleSessionUpdated() {
+    setLocalRefreshKey((k) => k + 1)
+    onSpriteSheetSaved?.()
+  }
 
   const items = useMemo(
     () =>
       sessions.map((session) => ({
         key: session.id,
         label: `${session.name || 'Untitled'} (${session.videos.length} videos) — ${new Date(session.updatedAt).toLocaleString()}`,
-        children: <SessionCard session={session} />,
+        children: <SessionCard session={session} onSessionUpdated={handleSessionUpdated} />,
       })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sessions],
   )
 

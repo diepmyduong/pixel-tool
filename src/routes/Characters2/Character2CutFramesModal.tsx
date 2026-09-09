@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Modal } from 'antd'
+import { Modal, message } from 'antd'
 import VideoV2FrameCutter, { type CutFrame } from '../AnimationsVideoV2/VideoV2FrameCutter'
 import VideoV2KeyTuner from '../AnimationsVideoV2/VideoV2KeyTuner'
 import VideoV2SpriteSheetEditor from '../AnimationsVideoV2/VideoV2SpriteSheetEditor'
 import { composeFrameStrip, downloadFrameStrip, fitFrameWithOffset, loadFrameCanvas, VIDEO_SHEET_FRAME_SIZE } from '../../lib/videoSpriteSheet'
+import { getCharacter2VideoSession, saveCharacter2VideoSession } from '../../lib/db'
 
 type Step = 'cut' | 'tune' | 'sheet'
 
@@ -12,6 +13,16 @@ interface Character2CutFramesModalProps {
   videoUrl: string
   title: string
   onClose: () => void
+  /**
+   * Identifies which video this modal is cutting frames from, so "Save to
+   * Video history" can write the resulting sprite sheet back onto that
+   * exact Character2VideoEntry. Omitted when there's no session to save
+   * into (there always is one, in practice, since a video only exists here
+   * after it was already appended to a session) — the button just doesn't
+   * render in that case.
+   */
+  saveTarget?: { sessionId: string; videoIndex: number }
+  onSpriteSheetSaved?: () => void
 }
 
 /**
@@ -21,7 +32,14 @@ interface Character2CutFramesModalProps {
  * output here is a downloadable sprite-sheet PNG, since Characters-2 videos
  * aren't tied to the Animation/VideoAnimation data model.
  */
-export default function Character2CutFramesModal({ open, videoUrl, title, onClose }: Character2CutFramesModalProps) {
+export default function Character2CutFramesModal({
+  open,
+  videoUrl,
+  title,
+  onClose,
+  saveTarget,
+  onSpriteSheetSaved,
+}: Character2CutFramesModalProps) {
   const [step, setStep] = useState<Step>('cut')
   const [cutFrames, setCutFrames] = useState<CutFrame[]>([])
   const [frameDurationSeconds, setFrameDurationSeconds] = useState(0.1)
@@ -64,6 +82,25 @@ export default function Character2CutFramesModal({ open, videoUrl, title, onClos
     downloadFrameStrip(blob, `${title.replace(/[^a-z0-9_-]+/gi, '_')}_sheet_${Date.now()}.png`)
   }
 
+  async function handleSaveSpriteSheetToHistory(blob: Blob) {
+    if (!saveTarget) return
+    const session = await getCharacter2VideoSession(saveTarget.sessionId)
+    if (!session) {
+      message.error('Could not find this video\'s session — it may have been deleted')
+      return
+    }
+    const videos = [...session.videos]
+    const entry = videos[saveTarget.videoIndex]
+    if (!entry) {
+      message.error('Could not find this video in its session')
+      return
+    }
+    videos[saveTarget.videoIndex] = { ...entry, spriteSheetBlob: blob }
+    await saveCharacter2VideoSession({ ...session, videos, updatedAt: Date.now() })
+    message.success('Sprite sheet saved to Video history')
+    onSpriteSheetSaved?.()
+  }
+
   return (
     <Modal title={`Cut frames — ${title}`} open={open} onCancel={handleClose} footer={null} width={960}>
       {step === 'cut' && (
@@ -100,6 +137,7 @@ export default function Character2CutFramesModal({ open, videoUrl, title, onClos
           onBack={() => setStep('tune')}
           onSave={handleExportSheet}
           saveLabel="Export sprite sheet"
+          onSaveSpriteSheetBlob={saveTarget ? handleSaveSpriteSheetToHistory : undefined}
         />
       )}
     </Modal>

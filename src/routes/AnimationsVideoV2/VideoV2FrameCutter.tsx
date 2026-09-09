@@ -3,7 +3,7 @@ import { Button, Card, InputNumber, Slider, Space, Tooltip, Typography } from 'a
 import { ArrowLeftOutlined, ArrowRightOutlined, DeleteOutlined, FastForwardOutlined, ScissorOutlined, StopOutlined } from '@ant-design/icons'
 import type { StateGroup } from '../../types'
 import { captureFullFrame, getVideoDuration } from '../../lib/videoProcessing'
-import { chromaKey, canvasToBlob } from '../../lib/imageProcessing'
+import { chromaKey, canvasToBlob, cropBlobByRatio, type CropRatioRect } from '../../lib/imageProcessing'
 import { VIDEO_V2_DEFAULT_FRAME_DURATION_SECONDS, recommendedFrameCount } from '../../lib/grid'
 import VideoV2Preview from './VideoV2Preview'
 
@@ -151,6 +151,34 @@ export default function VideoV2FrameCutter({
     })
   }
 
+  const [applyingCrop, setApplyingCrop] = useState(false)
+
+  /**
+   * Re-crops every frame in the stack to the same fractional rect, applied
+   * once right after cutting and before frames flow into key tuning. Both
+   * rawBlob and keyedBlob are cropped together (from the same rect) so the
+   * tuner's re-key-from-rawBlob step stays in sync with what's displayed —
+   * cropping only keyedBlob would leave rawBlob at the old, uncropped size.
+   */
+  async function handleApplyCrop(rect: CropRatioRect) {
+    setApplyingCrop(true)
+    try {
+      const next = await Promise.all(
+        frames.map(async (frame) => {
+          const [rawBlob, keyedBlob] = await Promise.all([
+            cropBlobByRatio(frame.rawBlob, rect),
+            cropBlobByRatio(frame.keyedBlob, rect),
+          ])
+          URL.revokeObjectURL(frame.url)
+          return { ...frame, rawBlob, keyedBlob, url: URL.createObjectURL(keyedBlob) }
+        }),
+      )
+      setFrames(next)
+    } finally {
+      setApplyingCrop(false)
+    }
+  }
+
   return (
     <Card title="Cut frames">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -254,6 +282,7 @@ export default function VideoV2FrameCutter({
             onFrameDurationSecondsChange={setFrameDurationSeconds}
             loop={loop}
             onLoopChange={setLoop}
+            onApplyCrop={applyingCrop ? undefined : handleApplyCrop}
           />
         )}
 

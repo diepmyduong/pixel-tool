@@ -79,10 +79,17 @@ export interface Character2 {
  */
 export interface Character2VideoEntry {
   direction: Direction8
-  pose: 'stand' | 'run'
+  pose: 'stand' | 'run' | 'attack'
   prompt: string
   videoBlob: Blob
   createdAt: number
+  /**
+   * The sprite sheet PNG produced by cutting/tuning/editing this video's
+   * frames, saved from the Sprite Sheet Editor's "Save to Video history"
+   * button — kept alongside the source video so re-opening this session
+   * later shows the finished sheet without re-cutting the video.
+   */
+  spriteSheetBlob?: Blob
 }
 
 /**
@@ -114,6 +121,12 @@ export interface RawGeneration {
   prompt: string
   imageBlob: Blob
   createdAt: number
+  /**
+   * The generation API's id for this specific image, needed to request an
+   * upscale (2K/4K) of it later. Absent for images that predate the upscale
+   * feature or that were uploaded by hand rather than generated.
+   */
+  flow2RequestId?: string
 }
 
 export interface Item {

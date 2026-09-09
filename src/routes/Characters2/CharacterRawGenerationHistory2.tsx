@@ -1,12 +1,12 @@
 import { memo, useEffect, useState } from 'react'
-import { Button, Card, Image, Space, Typography, Upload, message } from 'antd'
+import { Button, Divider, Image, Space, Typography, Upload, message } from 'antd'
 import { UploadOutlined } from '@ant-design/icons'
 import type { RawGeneration } from '../../types'
 import { listRawGenerations, saveRawGeneration } from '../../lib/db'
 
 interface CharacterRawGenerationHistory2Props {
   refreshKey: number
-  onSelect: (imageBlob: Blob) => void
+  onSelect: (imageBlob: Blob, flow2RequestId: string | undefined) => void
 }
 
 function CharacterRawGenerationHistory2({ refreshKey, onSelect }: CharacterRawGenerationHistory2Props) {
@@ -59,34 +59,33 @@ function CharacterRawGenerationHistory2({ refreshKey, onSelect }: CharacterRawGe
   }
 
   return (
-    <Card
-      title="Past generations"
-      size="small"
-      style={{ marginTop: 16 }}
-      extra={
-        <Upload accept="image/*" maxCount={1} showUploadList={false} beforeUpload={handleUpload}>
-          <Button size="small" icon={<UploadOutlined />} loading={uploading}>
-            Upload image
-          </Button>
-        </Upload>
-      }
-    >
-      {generations.length === 0 ? (
-        <Typography.Text type="secondary">No generations yet — upload an image to pick from here.</Typography.Text>
-      ) : (
-        <Space wrap>
-          {generations.map((gen) => (
-            <div
-              key={gen.id}
-              onClick={() => onSelect(gen.imageBlob)}
-              style={{ cursor: 'pointer', border: '1px solid #eee' }}
-            >
-              <Image src={urls[gen.id]} width={60} height={100} style={{ objectFit: 'cover' }} preview={false} />
-            </div>
-          ))}
-        </Space>
-      )}
-    </Card>
+    <>
+      <Divider titlePlacement="left" plain>
+        Past generations
+      </Divider>
+      <Upload accept="image/*" maxCount={1} showUploadList={false} beforeUpload={handleUpload}>
+        <Button size="small" icon={<UploadOutlined />} loading={uploading}>
+          Upload image
+        </Button>
+      </Upload>
+      <div style={{ marginTop: 12 }}>
+        {generations.length === 0 ? (
+          <Typography.Text type="secondary">No generations yet — upload an image to pick from here.</Typography.Text>
+        ) : (
+          <Space wrap>
+            {generations.map((gen) => (
+              <div
+                key={gen.id}
+                onClick={() => onSelect(gen.imageBlob, gen.flow2RequestId)}
+                style={{ cursor: 'pointer', border: '1px solid #eee' }}
+              >
+                <Image src={urls[gen.id]} width={60} height={100} style={{ objectFit: 'cover' }} preview={false} />
+              </div>
+            ))}
+          </Space>
+        )}
+      </div>
+    </>
   )
 }
 

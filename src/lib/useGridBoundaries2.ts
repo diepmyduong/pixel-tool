@@ -109,15 +109,21 @@ export function useGridBoundaries2(initialCols: number, initialRows: number, ima
   }
 
   /**
-   * Removes the last row, merging its span into the row above rather than
-   * just dropping the last boundary — dropping it would leave the new last
-   * boundary sitting wherever the removed row's start happened to be, not
-   * at the image's actual bottom edge, so the freed-up strip of image below
-   * it could never be reclaimed by dragging.
+   * Removes one row and re-spreads the remaining rows evenly across the
+   * same [first, last] span (first/last boundaries — i.e. the image's top
+   * and bottom edges — never move). A naive version that just merged the
+   * dropped row's span into its neighbor left the new last row several
+   * times wider than the others whenever this was called more than once in
+   * a row (each call kept compounding onto the same swollen last row),
+   * badly misaligned from the sheet's actual cell content.
    */
   function handleRemoveRow() {
     if (!rowBoundaries || rowBoundaries.length <= 2) return
-    setRowBoundaries([...rowBoundaries.slice(0, -2), rowBoundaries[rowBoundaries.length - 1]])
+    const first = rowBoundaries[0]
+    const last = rowBoundaries[rowBoundaries.length - 1]
+    const nextCount = rowBoundaries.length - 2 // one fewer row than before
+    const rowHeight = (last - first) / nextCount
+    setRowBoundaries(Array.from({ length: nextCount + 1 }, (_, i) => Math.round(first + i * rowHeight)))
   }
 
   /** Appends one more column line, splitting the last column's span in two. */
@@ -131,13 +137,18 @@ export function useGridBoundaries2(initialCols: number, initialRows: number, ima
   }
 
   /**
-   * Removes the last column, merging its span into the column before it —
-   * see handleRemoveRow for why the boundary before the dropped one must be
-   * replaced by the true right edge rather than just truncating the array.
+   * Removes one column and re-spreads the remaining columns evenly across
+   * the same [first, last] span — see handleRemoveRow for why (a version
+   * that merged the dropped column into its neighbor compounded into a
+   * badly oversized last column after repeated calls).
    */
   function handleRemoveCol() {
     if (!colBoundaries || colBoundaries.length <= 2) return
-    setColBoundaries([...colBoundaries.slice(0, -2), colBoundaries[colBoundaries.length - 1]])
+    const first = colBoundaries[0]
+    const last = colBoundaries[colBoundaries.length - 1]
+    const nextCount = colBoundaries.length - 2 // one fewer column than before
+    const colWidth = (last - first) / nextCount
+    setColBoundaries(Array.from({ length: nextCount + 1 }, (_, i) => Math.round(first + i * colWidth)))
   }
 
   const draggableRowIndices = useMemo(() => new Set(Array.from({ length: rows - 1 }, (_, i) => i + 1)), [rows])
