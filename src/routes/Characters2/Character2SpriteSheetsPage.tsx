@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import { Button, Card, Empty, Space, Tag, Typography } from 'antd'
 import { DownloadOutlined, ScissorOutlined } from '@ant-design/icons'
 import type { Character2VideoEntry } from '../../types'
-import { listCharacter2VideoSessions } from '../../lib/db'
+import { getCharacter2VideoSession, listCharacter2VideoSessions, saveCharacter2VideoSession } from '../../lib/db'
 import Character2CutFramesModal from './Character2CutFramesModal'
 
 interface Character2SpriteSheetsPageProps {
@@ -97,6 +97,17 @@ function Character2SpriteSheetsPage({ refreshKey, onSpriteSheetSaved }: Characte
     onSpriteSheetSaved?.()
   }
 
+  async function handleSaveSpriteSheetBlob(sessionId: string, videoIndex: number, blob: Blob) {
+    const session = await getCharacter2VideoSession(sessionId)
+    if (!session) return
+    const videos = [...session.videos]
+    const entry = videos[videoIndex]
+    if (!entry) return
+    videos[videoIndex] = { ...entry, spriteSheetBlob: blob }
+    await saveCharacter2VideoSession({ ...session, videos, updatedAt: Date.now() })
+    handleSpriteSheetSaved()
+  }
+
   const cards = useMemo(
     () =>
       sheets.map((sheet) => {
@@ -180,8 +191,9 @@ function Character2SpriteSheetsPage({ refreshKey, onSpriteSheetSaved }: Characte
           open
           videoUrl={cutTarget.url}
           title={cutTarget.title}
-          saveTarget={{ sessionId: cutTarget.sessionId, videoIndex: cutTarget.videoIndex }}
-          onSpriteSheetSaved={handleSpriteSheetSaved}
+          onSaveSpriteSheetBlob={(blob) =>
+            handleSaveSpriteSheetBlob(cutTarget.sessionId, cutTarget.videoIndex, blob)
+          }
           onClose={() => setCutTarget(null)}
         />
       )}

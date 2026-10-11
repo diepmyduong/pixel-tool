@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import { Button, Card, Collapse, Empty, Space, Tag, Typography, message } from 'antd'
 import { DownloadOutlined, ScissorOutlined } from '@ant-design/icons'
 import type { Character2VideoEntry, Character2VideoSession } from '../../types'
-import { listCharacter2VideoSessions } from '../../lib/db'
+import { getCharacter2VideoSession, listCharacter2VideoSessions, saveCharacter2VideoSession } from '../../lib/db'
 import { downloadVideosAsZip } from '../../lib/videoZip'
 import Character2CutFramesModal from './Character2CutFramesModal'
 
@@ -34,6 +34,24 @@ function SessionCard({ session, onSessionUpdated }: { session: Character2VideoSe
       created.forEach((u) => URL.revokeObjectURL(u))
     }
   }, [session])
+
+  async function handleSaveSpriteSheetToHistory(videoIndex: number, blob: Blob) {
+    const latest = await getCharacter2VideoSession(session.id)
+    if (!latest) {
+      message.error('Could not find this video\'s session — it may have been deleted')
+      return
+    }
+    const videos = [...latest.videos]
+    const entry = videos[videoIndex]
+    if (!entry) {
+      message.error('Could not find this video in its session')
+      return
+    }
+    videos[videoIndex] = { ...entry, spriteSheetBlob: blob }
+    await saveCharacter2VideoSession({ ...latest, videos, updatedAt: Date.now() })
+    message.success('Sprite sheet saved to Video history')
+    onSessionUpdated()
+  }
 
   async function handleDownloadAll() {
     setZipping(true)
@@ -103,8 +121,7 @@ function SessionCard({ session, onSessionUpdated }: { session: Character2VideoSe
           open
           videoUrl={cutTarget.url}
           title={`${session.videos[cutTarget.index].direction}-${session.videos[cutTarget.index].pose}`}
-          saveTarget={{ sessionId: session.id, videoIndex: cutTarget.index }}
-          onSpriteSheetSaved={onSessionUpdated}
+          onSaveSpriteSheetBlob={(blob) => handleSaveSpriteSheetToHistory(cutTarget.index, blob)}
           onClose={() => setCutTarget(null)}
         />
       )}

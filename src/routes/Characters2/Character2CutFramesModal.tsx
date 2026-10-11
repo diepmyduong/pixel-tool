@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { Modal, message } from 'antd'
+import { Modal } from 'antd'
 import VideoV2FrameCutter, { type CutFrame } from '../AnimationsVideoV2/VideoV2FrameCutter'
 import VideoV2KeyTuner from '../AnimationsVideoV2/VideoV2KeyTuner'
 import VideoV2SpriteSheetEditor from '../AnimationsVideoV2/VideoV2SpriteSheetEditor'
 import { composeFrameStrip, downloadFrameStrip, fitFrameWithOffset, loadFrameCanvas, VIDEO_SHEET_FRAME_SIZE } from '../../lib/videoSpriteSheet'
-import { getCharacter2VideoSession, saveCharacter2VideoSession } from '../../lib/db'
 
 type Step = 'cut' | 'tune' | 'sheet'
 
@@ -14,31 +13,31 @@ interface Character2CutFramesModalProps {
   title: string
   onClose: () => void
   /**
-   * Identifies which video this modal is cutting frames from, so "Save to
-   * Video history" can write the resulting sprite sheet back onto that
-   * exact Character2VideoEntry. Omitted when there's no session to save
-   * into (there always is one, in practice, since a video only exists here
-   * after it was already appended to a session) — the button just doesn't
-   * render in that case.
+   * When provided, shows a "Save to Video history" button in the Sprite
+   * Sheet Editor that hands the composed sheet blob to this callback
+   * instead of (or alongside) the plain file download — the caller decides
+   * where that blob actually gets persisted (a Character2VideoSession entry,
+   * an uploaded-video record, etc.), so this modal stays agnostic to which
+   * kind of source video it's cutting frames from.
    */
-  saveTarget?: { sessionId: string; videoIndex: number }
-  onSpriteSheetSaved?: () => void
+  onSaveSpriteSheetBlob?: (blob: Blob) => Promise<void> | void
 }
 
 /**
  * Same Cut -> Tune -> Sheet pipeline as Animations (Video v2), reused as-is
- * (same components) for one Characters-2 cell's video. Unlike VideoV2's page
- * flow, there is no "save an Animation record" step at the end — the only
- * output here is a downloadable sprite-sheet PNG, since Characters-2 videos
- * aren't tied to the Animation/VideoAnimation data model.
+ * (same components) for one Characters-2 video — either a per-(direction,
+ * pose) generated video or a freestanding uploaded one. Unlike VideoV2's
+ * page flow, there is no "save an Animation record" step at the end — the
+ * only output here is a sprite-sheet PNG (downloaded and/or handed to
+ * onSaveSpriteSheetBlob), since Characters-2 videos aren't tied to the
+ * Animation/VideoAnimation data model.
  */
 export default function Character2CutFramesModal({
   open,
   videoUrl,
   title,
   onClose,
-  saveTarget,
-  onSpriteSheetSaved,
+  onSaveSpriteSheetBlob,
 }: Character2CutFramesModalProps) {
   const [step, setStep] = useState<Step>('cut')
   const [cutFrames, setCutFrames] = useState<CutFrame[]>([])
@@ -82,25 +81,6 @@ export default function Character2CutFramesModal({
     downloadFrameStrip(blob, `${title.replace(/[^a-z0-9_-]+/gi, '_')}_sheet_${Date.now()}.png`)
   }
 
-  async function handleSaveSpriteSheetToHistory(blob: Blob) {
-    if (!saveTarget) return
-    const session = await getCharacter2VideoSession(saveTarget.sessionId)
-    if (!session) {
-      message.error('Could not find this video\'s session — it may have been deleted')
-      return
-    }
-    const videos = [...session.videos]
-    const entry = videos[saveTarget.videoIndex]
-    if (!entry) {
-      message.error('Could not find this video in its session')
-      return
-    }
-    videos[saveTarget.videoIndex] = { ...entry, spriteSheetBlob: blob }
-    await saveCharacter2VideoSession({ ...session, videos, updatedAt: Date.now() })
-    message.success('Sprite sheet saved to Video history')
-    onSpriteSheetSaved?.()
-  }
-
   return (
     <Modal title={`Cut frames — ${title}`} open={open} onCancel={handleClose} footer={null} width={960}>
       {step === 'cut' && (
@@ -137,7 +117,7 @@ export default function Character2CutFramesModal({
           onBack={() => setStep('tune')}
           onSave={handleExportSheet}
           saveLabel="Export sprite sheet"
-          onSaveSpriteSheetBlob={saveTarget ? handleSaveSpriteSheetToHistory : undefined}
+          onSaveSpriteSheetBlob={onSaveSpriteSheetBlob}
         />
       )}
     </Modal>

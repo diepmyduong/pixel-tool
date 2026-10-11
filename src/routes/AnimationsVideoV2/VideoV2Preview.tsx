@@ -23,10 +23,9 @@ const DEFAULT_CROP: CropRatioRect = { x: 0.1, y: 0, width: 0.8, height: 1 }
 const MIN_CROP_FRACTION = 0.05
 type HandlePos = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
-// Only used when cropping (onApplyCrop) is active — a plain preview never
-// needs to zoom in, it's the drag-precision problem this solves.
-const ZOOM_LEVELS = [1, 1.5, 2, 3, 4]
-const DEFAULT_ZOOM_INDEX = 1 // 1.5x — a bit roomier than the base size without needing a scroll area
+const ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 5, 6]
+const CROP_DEFAULT_ZOOM_INDEX = 1 // 1.5x — a bit roomier than the base size without needing a scroll area
+const PLAIN_DEFAULT_ZOOM_INDEX = 0 // plain previews stay at the base size until the user zooms
 const LOUPE_SIZE = 140
 const LOUPE_SCALE = 3
 
@@ -42,11 +41,11 @@ export default function VideoV2Preview({
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [crop, setCrop] = useState<CropRatioRect>(DEFAULT_CROP)
-  // Zoom only ever applies to the crop UI — it enlarges the preview box
-  // itself (not just a magnifying overlay) so dragging the box/handles is
-  // more precise on a source frame that's otherwise shown tiny at `size`.
-  const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX)
-  const displaySize = onApplyCrop ? size * ZOOM_LEVELS[zoomIndex] : size
+  // Zoom enlarges the preview box itself (not just a magnifying overlay), so
+  // dragging the crop box is more precise and small sprites are easier to
+  // inspect on a frame that's otherwise shown tiny at `size`.
+  const [zoomIndex, setZoomIndex] = useState(onApplyCrop ? CROP_DEFAULT_ZOOM_INDEX : PLAIN_DEFAULT_ZOOM_INDEX)
+  const displaySize = size * ZOOM_LEVELS[zoomIndex]
   // Cursor position (relative to the display box) while dragging, so the
   // floating loupe can track it; null hides the loupe.
   const [loupePos, setLoupePos] = useState<{ x: number; y: number } | null>(null)
@@ -202,8 +201,7 @@ export default function VideoV2Preview({
 
   return (
     <Space direction="vertical" align="center">
-      {onApplyCrop && (
-        <Space size="small">
+      <Space size="small">
           <Tooltip title="Zoom out">
             <Button
               size="small"
@@ -223,8 +221,7 @@ export default function VideoV2Preview({
               onClick={() => setZoomIndex((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))}
             />
           </Tooltip>
-        </Space>
-      )}
+      </Space>
       <div style={{ position: 'relative', width: displaySize, maxWidth: '100%' }}>
         <div
           ref={boxRef}

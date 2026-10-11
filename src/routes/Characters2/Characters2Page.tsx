@@ -7,6 +7,7 @@ import CharacterGeneratePanel2 from './CharacterGeneratePanel2'
 import CharacterRawGenerationHistory2 from './CharacterRawGenerationHistory2'
 import Character2VideoHistoryPage from './Character2VideoHistoryPage'
 import Character2SpriteSheetsPage from './Character2SpriteSheetsPage'
+import Character2VideoUploadPage from './Character2VideoUploadPage'
 import PickSheetCard from './PickSheetCard'
 import DirectionVideosCard from './DirectionVideosCard'
 import { useCharacter2Sheet } from './useCharacter2Sheet'
@@ -167,6 +168,11 @@ export default function Characters2Page() {
                 onSpriteSheetSaved={handleVideoSaved}
               />
             ),
+          },
+          {
+            key: 'video',
+            label: 'Video',
+            children: <Character2VideoUploadPage />,
           },
         ]}
       />

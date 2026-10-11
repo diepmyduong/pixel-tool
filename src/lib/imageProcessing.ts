@@ -66,9 +66,11 @@ export async function sliceCells(
   return cells
 }
 
-export type ChromaKeyColor = 'green' | 'black' | 'gray' | 'blue' | 'white'
+export type ChromaKeyColor = 'green' | 'black' | 'gray' | 'blue' | 'white' | 'yellow' | 'pink'
 
 const CHROMA_KEY_RGB: Record<ChromaKeyColor, { r: number; g: number; b: number }> = {
+  yellow: { r: 255, g: 255, b: 0 },
+  pink: { r: 255, g: 0, b: 255 },
   green: { r: 0, g: 255, b: 0 },
   black: { r: 0, g: 0, b: 0 },
   gray: { r: 128, g: 128, b: 128 },
@@ -126,11 +128,9 @@ export function chromaKey(
       if (despillGreen && g > r && g > b) {
         data[i + 1] = Math.round((r + b) / 2)
       }
-    } else if (despillGreen && g > r && g > b) {
-      // Despill: pixel survived the key but still leans green (edge fringe) — pull green
-      // channel down toward the average of red/blue so no green halo remains.
-      data[i + 1] = Math.round((r + b) / 2)
     }
+    // Pixels beyond outerThreshold are left untouched: despilling them would
+    // recolor genuinely green parts of the subject (e.g. a green outfit).
   }
 
   ctx.putImageData(imageData, 0, 0)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { message } from 'antd'
+import JSZip from 'jszip'
 import type { Character2VideoEntry, Direction8 } from '../../types'
 import { DIRECTION8_ORDER } from '../../types'
 import { canvasToBlob, blobToBase64DataUri, chromaKey, sliceCells } from '../../lib/imageProcessing'
@@ -116,6 +117,7 @@ export function useCharacter2Sheet({ imageUrl, imageBlob, name, description, onV
   const [videoCells, setVideoCells] = useState<Record<VideoCellKey, VideoCellState>>({})
   const [generatingAll, setGeneratingAll] = useState(false)
   const [zippingAll, setZippingAll] = useState(false)
+  const [downloadingSliced, setDownloadingSliced] = useState(false)
   const [cutTarget, setCutTarget] = useState<{ key: VideoCellKey; url: string; title: string } | null>(null)
   // Per-(row, pose) prompt override — absent means "use buildCharacter2VideoPrompt's
   // auto-generated prompt", so editing one cell's prompt never affects the
@@ -273,6 +275,37 @@ export function useCharacter2Sheet({ imageUrl, imageBlob, name, description, onV
     }
   }
 
+  /**
+   * Lets a cell's video come from a file on disk instead of AI generation —
+   * for a direction/pose the user already has footage for, or to swap in a
+   * hand-picked take without spending a generation. Goes through the same
+   * appendToSession/updateVideoCell path generateVideoForCell uses, so the
+   * uploaded video is immediately available for "Cut frames" and gets
+   * persisted into this sheet's video session exactly like a generated one
+   * (prompt recorded as empty since none was used).
+   */
+  async function uploadVideoForCell(row: number, pose: Character2Pose, file: File) {
+    const direction = rowDirections[row]
+    if (!direction) {
+      message.error(`Row ${row + 1} has no direction selected`)
+      return
+    }
+    const key: VideoCellKey = `${row}-${pose}`
+    const token = (generationTokens.current[key] ?? 0) + 1
+    generationTokens.current[key] = token
+    const isStale = () => generationTokens.current[key] !== token
+
+    updateVideoCell(row, pose, { status: 'generating', progress: null, error: null })
+    try {
+      await appendToSession({ direction, pose, prompt: '', videoBlob: file, createdAt: Date.now() })
+      if (isStale()) return
+      updateVideoCell(row, pose, { status: 'done', videoUrl: URL.createObjectURL(file), videoBlob: file })
+    } catch (err) {
+      if (isStale()) return
+      updateVideoCell(row, pose, { status: 'error', error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
   async function handleGenerateAllVideos() {
     setGeneratingAll(true)
     try {
@@ -308,6 +341,43 @@ export function useCharacter2Sheet({ imageUrl, imageBlob, name, description, onV
       message.error(err instanceof Error ? err.message : String(err))
     } finally {
       setZippingAll(false)
+    }
+  }
+
+  /** Zips every sliced grid cell (the whole sheet, not just the cells picked for stand/run/attack) and triggers a download. */
+  async function handleDownloadAllSliced() {
+    if (!sliced || sliced.length === 0) {
+      message.error('Slice the sheet first')
+      return
+    }
+    setDownloadingSliced(true)
+    try {
+      const zip = new JSZip()
+      const blobs = await Promise.all(
+        sliced.map((canvas) => (canvas ? canvasToBlob(canvas) : null)),
+      )
+      blobs.forEach((blob, cellIndex) => {
+        if (!blob) return
+        const row = Math.floor(cellIndex / grid.cols)
+        const col = cellIndex % grid.cols
+        zip.file(`row${row + 1}_col${col + 1}.png`, blob)
+      })
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(zipBlob)
+      try {
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${(name || 'character').replace(/[^a-z0-9_-]+/gi, '_')}_sheet_cells_${Date.now()}.zip`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      } finally {
+        URL.revokeObjectURL(url)
+      }
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDownloadingSliced(false)
     }
   }
 
@@ -386,6 +456,7 @@ export function useCharacter2Sheet({ imageUrl, imageBlob, name, description, onV
     videoCellState,
     generatingAll,
     zippingAll,
+    downloadingSliced,
     cutTarget,
     setCutTarget,
     canvasForRef,
@@ -397,8 +468,10 @@ export function useCharacter2Sheet({ imageUrl, imageBlob, name, description, onV
     customPrompts,
     stopVideoForCell,
     generateVideoForCell,
+    uploadVideoForCell,
     handleGenerateAllVideos,
     handleDownloadAllZip,
+    handleDownloadAllSliced,
     handleSlice,
     handleUploadForPicker,
   }

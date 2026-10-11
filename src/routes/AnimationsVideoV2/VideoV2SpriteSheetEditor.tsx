@@ -20,6 +20,31 @@ export interface FrameOffset {
   y: number
 }
 
+/** Draws a canvas mirrored left-right onto a same-size new canvas. */
+function flipCanvasHorizontal(source: HTMLCanvasElement): HTMLCanvasElement {
+  const out = document.createElement('canvas')
+  out.width = source.width
+  out.height = source.height
+  const ctx = out.getContext('2d')
+  if (!ctx) throw new Error('Could not get 2D context')
+  ctx.imageSmoothingEnabled = false
+  ctx.translate(out.width, 0)
+  ctx.scale(-1, 1)
+  ctx.drawImage(source, 0, 0)
+  return out
+}
+
+/**
+ * Loads a frame's canvas and, if flipping is on, mirrors it horizontally —
+ * kept as one helper so every consumer below (preview, FrameCell, every
+ * export/download/save path) applies the exact same transform instead of
+ * some paths forgetting it and producing a sheet with mismatched facing.
+ */
+async function loadFrameCanvasMaybeFlipped(blob: Blob, flipHorizontal: boolean): Promise<HTMLCanvasElement> {
+  const canvas = await loadFrameCanvas(blob)
+  return flipHorizontal ? flipCanvasHorizontal(canvas) : canvas
+}
+
 interface VideoV2SpriteSheetEditorProps {
   frames: CutFrame[]
   margin: number
@@ -58,6 +83,7 @@ function FrameCell({
   onOffsetChange,
   pixelated,
   pixelFit,
+  flipHorizontal,
 }: {
   frame: CutFrame
   margin: number
@@ -65,6 +91,7 @@ function FrameCell({
   onOffsetChange: (offset: FrameOffset) => void
   pixelated: boolean
   pixelFit: boolean
+  flipHorizontal: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sourceRef = useRef<HTMLCanvasElement | null>(null)
@@ -73,7 +100,7 @@ function FrameCell({
 
   useEffect(() => {
     let cancelled = false
-    loadFrameCanvas(frame.keyedBlob).then((canvas) => {
+    loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal).then((canvas) => {
       if (cancelled) return
       sourceRef.current = canvas
       redraw()
@@ -82,16 +109,27 @@ function FrameCell({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame.keyedBlob])
+  }, [frame.keyedBlob, flipHorizontal])
 
   // Native-size preview: shown as a plain <img>, not drawn to the fixed-size
   // canvas below (that canvas is sized for the pixel-fit path only).
   useEffect(() => {
     if (pixelFit) return
-    const url = URL.createObjectURL(frame.keyedBlob)
-    setNativeUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [frame.keyedBlob, pixelFit])
+    let cancelled = false
+    let url: string | null = null
+    loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal).then((canvas) => {
+      if (cancelled) return
+      canvas.toBlob((blob) => {
+        if (cancelled || !blob) return
+        url = URL.createObjectURL(blob)
+        setNativeUrl(url)
+      }, 'image/png')
+    })
+    return () => {
+      cancelled = true
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [frame.keyedBlob, pixelFit, flipHorizontal])
 
   function redraw() {
     if (!pixelFit) return
@@ -206,23 +244,48 @@ export default function VideoV2SpriteSheetEditor({
   const [pixelFit, setPixelFit] = useState(false)
   const [downloadSize, setDownloadSize] = useState(VIDEO_SHEET_FRAME_SIZE)
   const [downloadingAtSize, setDownloadingAtSize] = useState(false)
+  // Off by default. Mirrors every frame left-right — e.g. a captured clip
+  // facing left can be flipped to face right instead of re-generating.
+  const [flipHorizontal, setFlipHorizontal] = useState(false)
 
-  // Re-render the preview strip's frame URLs whenever margin/offsets change,
-  // so VideoV2Preview shows the edited (not raw) frames. When pixelFit is
-  // off, the preview is just the frames' own keyed blobs, unmodified.
+  // Re-render the preview strip's frame URLs whenever margin/offsets/flip
+  // change, so VideoV2Preview shows the edited (not raw) frames. When
+  // pixelFit is off and flip is off, the preview is just the frames' own
+  // keyed blobs, unmodified — the cheapest path, so it's kept separate
+  // rather than always going through the canvas pipeline.
   useEffect(() => {
-    if (!pixelFit) {
+    if (!pixelFit && !flipHorizontal) {
       setPreviewUrls((prev) => {
         prev.forEach((u) => URL.revokeObjectURL(u))
         return frames.map((f) => URL.createObjectURL(f.keyedBlob))
       })
       return
     }
+    if (!pixelFit) {
+      let cancelled = false
+      Promise.all(
+        frames.map(async (frame) => {
+          const canvas = await loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal)
+          return new Promise<string>((resolve, reject) => {
+            canvas.toBlob((b) => (b ? resolve(URL.createObjectURL(b)) : reject(new Error('toBlob failed'))), 'image/png')
+          })
+        }),
+      ).then((urls) => {
+        if (cancelled) return
+        setPreviewUrls((prev) => {
+          prev.forEach((u) => URL.revokeObjectURL(u))
+          return urls
+        })
+      })
+      return () => {
+        cancelled = true
+      }
+    }
     let cancelled = false
     async function build() {
       const canvases = await Promise.all(
         frames.map(async (frame, i) => {
-          const source = await loadFrameCanvas(frame.keyedBlob)
+          const source = await loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal)
           const offset = frameOffsets[i] ?? { x: 0, y: 0 }
           return fitFrameWithOffset(source, VIDEO_SHEET_FRAME_SIZE, margin, offset.x, offset.y)
         }),
@@ -247,7 +310,7 @@ export default function VideoV2SpriteSheetEditor({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frames, margin, frameOffsets, pixelFit])
+  }, [frames, margin, frameOffsets, pixelFit, flipHorizontal])
 
   useEffect(() => {
     return () => {
@@ -274,7 +337,7 @@ export default function VideoV2SpriteSheetEditor({
     try {
       const canvases = await Promise.all(
         frames.map(async (frame, i) => {
-          const source = await loadFrameCanvas(frame.keyedBlob)
+          const source = await loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal)
           const offset = offsets[i]
           return fitFrameWithOffset(source, VIDEO_SHEET_FRAME_SIZE, margin, offset.x, offset.y)
         }),
@@ -294,7 +357,9 @@ export default function VideoV2SpriteSheetEditor({
   async function handleExportOriginal() {
     setExportingOriginal(true)
     try {
-      const canvases = await Promise.all(frames.map((frame) => loadFrameCanvas(frame.keyedBlob)))
+      const canvases = await Promise.all(
+        frames.map((frame) => loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal)),
+      )
       const blob = await composeOriginalFrameStrip(canvases)
       downloadFrameStrip(blob, `animation_sheet_original_${Date.now()}.png`)
     } finally {
@@ -313,7 +378,7 @@ export default function VideoV2SpriteSheetEditor({
     try {
       const canvases = await Promise.all(
         frames.map(async (frame) => {
-          const source = await loadFrameCanvas(frame.keyedBlob)
+          const source = await loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal)
           return scaleCanvasToSize(source, downloadSize)
         }),
       )
@@ -338,7 +403,7 @@ export default function VideoV2SpriteSheetEditor({
         ? await composeFrameStrip(
             await Promise.all(
               frames.map(async (frame, i) => {
-                const source = await loadFrameCanvas(frame.keyedBlob)
+                const source = await loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal)
                 const offset = offsets[i]
                 return fitFrameWithOffset(source, VIDEO_SHEET_FRAME_SIZE, margin, offset.x, offset.y)
               }),
@@ -346,7 +411,9 @@ export default function VideoV2SpriteSheetEditor({
           )
         : await composeScaledFrameStrip(
             await Promise.all(
-              frames.map(async (frame) => scaleCanvasToSize(await loadFrameCanvas(frame.keyedBlob), downloadSize)),
+              frames.map(async (frame) =>
+                scaleCanvasToSize(await loadFrameCanvasMaybeFlipped(frame.keyedBlob, flipHorizontal), downloadSize),
+              ),
             ),
             downloadSize,
           )
@@ -364,6 +431,14 @@ export default function VideoV2SpriteSheetEditor({
           <Typography.Text>Fit to {VIDEO_SHEET_FRAME_SIZE}px pixel grid</Typography.Text>
           <Typography.Text type="secondary">
             (off shows frames at their native size — turn on to resize/reposition into a fixed pixel-art sheet)
+          </Typography.Text>
+        </Space>
+
+        <Space size="small">
+          <Switch checked={flipHorizontal} onChange={setFlipHorizontal} size="small" />
+          <Typography.Text>Flip horizontal</Typography.Text>
+          <Typography.Text type="secondary">
+            (mirrors every frame left-right — e.g. turn a left-facing clip into a right-facing one)
           </Typography.Text>
         </Space>
 
@@ -435,6 +510,7 @@ export default function VideoV2SpriteSheetEditor({
                 onOffsetChange={(offset) => handleFrameOffsetChange(index, offset)}
                 pixelated={pixelatedPreview}
                 pixelFit={pixelFit}
+                flipHorizontal={flipHorizontal}
               />
               <Typography.Text type="secondary" style={{ display: 'block', textAlign: 'center' }}>
                 {index + 1}
@@ -458,7 +534,7 @@ export default function VideoV2SpriteSheetEditor({
         )}
 
         <Space>
-          <Button onClick={onBack}>Back to chroma key tuning</Button>
+          <Button onClick={onBack}>Back to frame cutting</Button>
           <Button type="primary" onClick={onSave}>
             {saveLabel}
           </Button>

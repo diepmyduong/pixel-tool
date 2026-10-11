@@ -110,6 +110,30 @@ export interface Character2VideoSession {
 }
 
 /**
+ * One video uploaded directly from disk in Characters-2's "Video" tab —
+ * independent of any generated sheet/session, unlike Character2VideoEntry
+ * (which is always a specific direction+pose cell generated from a picked
+ * sheet). Exists purely so a user-supplied video can go through the same
+ * Cut -> Tune -> Sprite Sheet Editor pipeline and have its resulting sheet
+ * persist across reloads, without forcing it to pretend to be a
+ * (direction, pose) cell of some sheet it was never generated from.
+ */
+export interface Character2UploadedVideo {
+  id: string
+  /** User-facing label, defaults to the uploaded file's name. */
+  name: string
+  videoBlob: Blob
+  /**
+   * The sprite sheet PNG produced by cutting/tuning/editing this video's
+   * frames, saved from the Sprite Sheet Editor's "Save to Video history"
+   * button — kept alongside the source video so revisiting this tab later
+   * shows the finished sheet without re-cutting the video.
+   */
+  spriteSheetBlob?: Blob
+  createdAt: number
+}
+
+/**
  * One video generated for a single (direction, pose) cell of an Item-2
  * sheet, kept as part of its session (see Item2VideoSession) so it can be
  * viewed, re-downloaded, or batch-zipped after the page is closed and

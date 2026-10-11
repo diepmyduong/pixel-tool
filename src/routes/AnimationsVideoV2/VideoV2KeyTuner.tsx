@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Card, Slider, Space, Typography } from 'antd'
-import { chromaKey, canvasToBlob } from '../../lib/imageProcessing'
+import { Button, Card, Checkbox, Slider, Space, Typography } from 'antd'
+import { chromaKey, canvasToBlob, type ChromaKeyColor } from '../../lib/imageProcessing'
 import type { CutFrame } from './VideoV2FrameCutter'
 import VideoV2Preview from './VideoV2Preview'
+
+const KEY_COLOR_OPTIONS: { label: string; value: ChromaKeyColor }[] = [
+  { label: 'Green', value: 'green' },
+  { label: 'Black', value: 'black' },
+  { label: 'Blue', value: 'blue' },
+  { label: 'Yellow', value: 'yellow' },
+  { label: 'Pink', value: 'pink' },
+]
 
 const DEFAULT_INNER = 90
 const DEFAULT_OUTER = 140
@@ -29,7 +37,12 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 
 // Re-keys ONE frame starting from its rawBlob (never from a previously-keyed
 // blob) so repeated threshold changes never compound chromaKey's despill.
-async function rekeyFrame(frame: CutFrame, inner: number, outer: number): Promise<CutFrame> {
+async function rekeyFrame(
+  frame: CutFrame,
+  colors: ChromaKeyColor[],
+  inner: number,
+  outer: number,
+): Promise<CutFrame> {
   const rawUrl = URL.createObjectURL(frame.rawBlob)
   try {
     const img = await loadImage(rawUrl)
@@ -39,7 +52,7 @@ async function rekeyFrame(frame: CutFrame, inner: number, outer: number): Promis
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Could not get 2D context')
     ctx.drawImage(img, 0, 0)
-    chromaKey(canvas, ['green'], inner, outer)
+    chromaKey(canvas, colors, inner, outer)
     const keyedBlob = await canvasToBlob(canvas)
     const url = URL.createObjectURL(keyedBlob)
     return { ...frame, keyedBlob, url }
@@ -59,6 +72,10 @@ export default function VideoV2KeyTuner({
 }: VideoV2KeyTunerProps) {
   const [inner, setInner] = useState(DEFAULT_INNER)
   const [outer, setOuter] = useState(DEFAULT_OUTER)
+  // Both colors can be keyed at once — e.g. a source that has flecks of
+  // both a green-screen edge and a black background. Defaults to green
+  // only, matching prior behavior for anyone not opting into black.
+  const [keyColors, setKeyColors] = useState<ChromaKeyColor[]>(['green'])
   const [keyedFrames, setKeyedFrames] = useState<CutFrame[]>(frames)
   const [rekeying, setRekeying] = useState(false)
   // keyedFrames starts out identity-shared with the incoming `frames` prop
@@ -80,12 +97,12 @@ export default function VideoV2KeyTuner({
   const runIdRef = useRef(0)
   const currentUrlsRef = useRef<string[]>([])
 
-  async function rekeyAll(nextInner: number, nextOuter: number) {
+  async function rekeyAll(nextColors: ChromaKeyColor[], nextInner: number, nextOuter: number) {
     const runId = ++runIdRef.current
     setRekeying(true)
     // Always re-derive from the ORIGINAL `frames` prop (rawBlob lives there),
     // never from `keyedFrames` — that is what prevents compounding despill.
-    const next = await Promise.all(frames.map((f) => rekeyFrame(f, nextInner, nextOuter)))
+    const next = await Promise.all(frames.map((f) => rekeyFrame(f, nextColors, nextInner, nextOuter)))
     if (runId !== runIdRef.current) {
       // A newer run started while this one was in flight — drop this result
       // and revoke the URLs it just created so nothing leaks.
@@ -106,11 +123,11 @@ export default function VideoV2KeyTuner({
   // change again before the timer fires.
   useEffect(() => {
     const timer = setTimeout(() => {
-      rekeyAll(inner, outer)
+      rekeyAll(keyColors, inner, outer)
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inner, outer, frames])
+  }, [keyColors, inner, outer, frames])
 
   // Revoke every remaining displayed URL on unmount only (not on every
   // re-key — rekeyAll already revokes superseded URLs as each run lands).
@@ -132,7 +149,17 @@ export default function VideoV2KeyTuner({
     <Card title="Tune chroma key">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <div>
-          <Typography.Text>Inner threshold — fully transparent below this distance from green</Typography.Text>
+          <Typography.Text>Background color(s) to remove</Typography.Text>
+          <div>
+            <Checkbox.Group
+              options={KEY_COLOR_OPTIONS}
+              value={keyColors}
+              onChange={(values) => setKeyColors(values as ChromaKeyColor[])}
+            />
+          </div>
+        </div>
+        <div>
+          <Typography.Text>Inner threshold — fully transparent below this distance from the nearest selected color</Typography.Text>
           <Slider min={0} max={255} value={inner} onChange={handleInnerChange} />
         </div>
         <div>

@@ -4,6 +4,7 @@ import type {
   AnimationFramePair,
   Character,
   Character2,
+  Character2UploadedVideo,
   Character2VideoSession,
   ImageAnimation,
   Item,
@@ -17,6 +18,7 @@ interface SpriteDashboardDB extends DBSchema {
   characters: { key: string; value: Character }
   characters2: { key: string; value: Character2 }
   character2VideoSessions: { key: string; value: Character2VideoSession }
+  character2UploadedVideos: { key: string; value: Character2UploadedVideo }
   item2VideoSessions: { key: string; value: Item2VideoSession }
   rawGenerations: { key: string; value: RawGeneration; indexes: { kind: string } }
   items: { key: string; value: Item }
@@ -31,7 +33,7 @@ let dbPromise: Promise<IDBPDatabase<SpriteDashboardDB>> | null = null
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<SpriteDashboardDB>('sprite-dashboard', 12, {
+    dbPromise = openDB<SpriteDashboardDB>('sprite-dashboard', 13, {
       upgrade(db) {
         if (!db.objectStoreNames.contains('characters')) {
           db.createObjectStore('characters', { keyPath: 'id' })
@@ -41,6 +43,9 @@ function getDB() {
         }
         if (!db.objectStoreNames.contains('character2VideoSessions')) {
           db.createObjectStore('character2VideoSessions', { keyPath: 'id' })
+        }
+        if (!db.objectStoreNames.contains('character2UploadedVideos')) {
+          db.createObjectStore('character2UploadedVideos', { keyPath: 'id' })
         }
         if (!db.objectStoreNames.contains('item2VideoSessions')) {
           db.createObjectStore('item2VideoSessions', { keyPath: 'id' })
@@ -120,6 +125,21 @@ export async function getCharacter2VideoSession(id: string): Promise<Character2V
 export async function listCharacter2VideoSessions(): Promise<Character2VideoSession[]> {
   const db = await getDB()
   return db.getAll('character2VideoSessions')
+}
+
+export async function saveCharacter2UploadedVideo(video: Character2UploadedVideo): Promise<void> {
+  const db = await getDB()
+  await db.put('character2UploadedVideos', video)
+}
+
+export async function listCharacter2UploadedVideos(): Promise<Character2UploadedVideo[]> {
+  const db = await getDB()
+  return db.getAll('character2UploadedVideos')
+}
+
+export async function deleteCharacter2UploadedVideo(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete('character2UploadedVideos', id)
 }
 
 export async function saveItem2VideoSession(session: Item2VideoSession): Promise<void> {

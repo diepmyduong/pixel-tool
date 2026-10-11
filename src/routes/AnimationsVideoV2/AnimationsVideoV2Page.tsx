@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Col, Row, Typography, message } from 'antd'
 import type { Character, Item, StateGroup, VideoAnimation } from '../../types'
 import { getCharacter, listItems, saveVideoAnimation } from '../../lib/db'
@@ -83,6 +83,20 @@ export default function AnimationsVideoV2Page() {
     }
   }, [referenceImageUrl])
 
+  // Revoke every remaining cut-frame URL when the page itself unmounts (e.g.
+  // navigating away mid-flow) — every in-flow exit (Discard, a new video
+  // replacing the stack, Save) already revokes cutFrames itself where it
+  // happens, so this is only the final catch-all for leaving the page
+  // without going through any of those. Uses a ref so it fires once on
+  // actual page unmount, not on every cutFrames update.
+  const cutFramesRef = useRef<CutFrame[]>([])
+  cutFramesRef.current = cutFrames
+  useEffect(() => {
+    return () => {
+      cutFramesRef.current.forEach((f) => URL.revokeObjectURL(f.url))
+    }
+  }, [])
+
   function handleReferenceImageChange(file: File | null) {
     if (referenceImageUrl) URL.revokeObjectURL(referenceImageUrl)
     setReferenceImageFile(file)
@@ -119,6 +133,7 @@ export default function AnimationsVideoV2Page() {
   }
 
   function handleDiscard() {
+    cutFrames.forEach((f) => URL.revokeObjectURL(f.url))
     setRawVideoUrl(null)
     setRawVideoBlob(null)
     setSetupSnapshot(null)

@@ -53,6 +53,35 @@ function isGifFile(file: File): boolean {
   return file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')
 }
 
+/**
+ * Applies the user-chosen export transform to a cropped canvas: an optional
+ * horizontal flip, then an optional resize to fixed output dimensions
+ * (nearest-neighbor, since these are pixel-art crops). `width`/`height` null
+ * means "keep this canvas's own size" for that axis.
+ */
+function applyExportTransform(
+  canvas: HTMLCanvasElement,
+  flip: boolean,
+  width: number | null,
+  height: number | null,
+): HTMLCanvasElement {
+  if (!flip && width === null && height === null) return canvas
+  const outWidth = width ?? canvas.width
+  const outHeight = height ?? canvas.height
+  const out = document.createElement('canvas')
+  out.width = outWidth
+  out.height = outHeight
+  const ctx = out.getContext('2d')
+  if (!ctx) throw new Error('Could not get 2D context')
+  ctx.imageSmoothingEnabled = false
+  if (flip) {
+    ctx.translate(outWidth, 0)
+    ctx.scale(-1, 1)
+  }
+  ctx.drawImage(canvas, 0, 0, outWidth, outHeight)
+  return out
+}
+
 function boxFilenamePart(box: CropBox): string {
   const group = box.group.trim() || 'untitled'
   return `${group}_${box.order}`.replace(/[^a-z0-9_-]+/gi, '_')
@@ -117,6 +146,9 @@ export function useFreeCropBoxes() {
   const [boxes, setBoxes] = useState<CropBox[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [chromaKeyColors, setChromaKeyColors] = useState<ChromaKeyColor[]>([])
+  const [exportWidth, setExportWidth] = useState<number | null>(null)
+  const [exportHeight, setExportHeight] = useState<number | null>(null)
+  const [exportFlip, setExportFlip] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [gifLoading, setGifLoading] = useState(false)
 
@@ -265,7 +297,7 @@ export function useFreeCropBoxes() {
     if (!ctx) throw new Error('Could not get 2D context')
     ctx.drawImage(source, box.x, box.y, box.width, box.height, 0, 0, canvas.width, canvas.height)
     chromaKey(canvas, chromaKeyColors)
-    return canvas
+    return applyExportTransform(canvas, exportFlip, exportWidth, exportHeight)
   }
 
   function sourceForBox(box: CropBox): CropSource {
@@ -456,6 +488,12 @@ export function useFreeCropBoxes() {
     setSelectedId,
     chromaKeyColors,
     setChromaKeyColors,
+    exportWidth,
+    setExportWidth,
+    exportHeight,
+    setExportHeight,
+    exportFlip,
+    setExportFlip,
     exporting,
     addBox,
     updateBoxRect,

@@ -3,7 +3,7 @@ import { Button, Card, InputNumber, Slider, Space, Tooltip, Typography } from 'a
 import { ArrowLeftOutlined, ArrowRightOutlined, DeleteOutlined, FastForwardOutlined, ScissorOutlined, StopOutlined } from '@ant-design/icons'
 import type { StateGroup } from '../../types'
 import { captureFullFrame, getVideoDuration } from '../../lib/videoProcessing'
-import { chromaKey, canvasToBlob, cropBlobByRatio, type CropRatioRect } from '../../lib/imageProcessing'
+import { canvasToBlob, cropBlobByRatio, type CropRatioRect } from '../../lib/imageProcessing'
 import { VIDEO_V2_DEFAULT_FRAME_DURATION_SECONDS, recommendedFrameCount } from '../../lib/grid'
 import VideoV2Preview from './VideoV2Preview'
 
@@ -11,7 +11,7 @@ export interface CutFrame {
   id: string
   timestamp: number
   rawBlob: Blob // captureFullFrame output, not keyed — Task 4 re-keys from this
-  keyedBlob: Blob // rawBlob after chromaKey at defaults (90/140)
+  keyedBlob: Blob // same as rawBlob — no chroma key is applied
   url: string // object URL of keyedBlob, for display
 }
 
@@ -51,20 +51,18 @@ export default function VideoV2FrameCutter({
     getVideoDuration(videoUrl).then(setDuration)
   }, [videoUrl])
 
-  // Keep a ref mirroring the latest frames so the unmount cleanup below can
-  // revoke every object URL without re-subscribing the effect on each cut
-  // (a re-subscribed effect would revoke-then-recreate the same URLs).
-  const framesRef = useRef<CutFrame[]>([])
-  framesRef.current = frames
-
-  // Revoke every remaining frame's object URL on unmount (per-frame deletes
-  // and page-level "discard video" already revoke their own as they happen).
-  useEffect(() => {
-    return () => {
-      framesRef.current.forEach((f) => URL.revokeObjectURL(f.url))
-    }
-  }, [])
-
+  // No unmount-cleanup revoke here on purpose. This component is kept
+  // mounted (just CSS-hidden) across the whole 'cut' -> 'tune' -> 'sheet'
+  // flow specifically so "Back to frame cutting" can restore its frames
+  // without any restore logic — every path that actually discards this
+  // cutter's frames already revokes them itself where it happens (per-frame
+  // delete, handleApplyCrop's old-url swap, and the page's
+  // resetCutStackForNewVideo/handleDiscard on a fresh video or explicit
+  // discard). An unmount-triggered revoke effect here previously double-ran
+  // under StrictMode's mount-cleanup-remount cycle and revoked frame URLs
+  // that were still live and displayed after returning from the tune step —
+  // the effect duplicated cleanup the page already owns, so it's removed
+  // rather than guarded.
   useEffect(() => {
     onStackChange(frames, frameDurationSeconds, loop)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,12 +78,16 @@ export default function VideoV2FrameCutter({
     if (videoRef.current) videoRef.current.currentTime = timestamp
   }
 
-  /** Captures the frame at `timestamp`, appends it to the stack, and returns it. */
+  /**
+   * Captures the frame at `timestamp`, appends it to the stack, and returns
+   * it. No chroma key applied here — the source video's colors (including
+   * any blue/green detail on the character itself) are kept exactly as
+   * captured; keyedBlob is just an unmodified copy of rawBlob.
+   */
   async function cutFrameAt(timestamp: number): Promise<CutFrame> {
     const canvas = await captureFullFrame(videoUrl, timestamp)
     const rawBlob = await canvasToBlob(canvas)
-    chromaKey(canvas, ['green'])
-    const keyedBlob = await canvasToBlob(canvas)
+    const keyedBlob = rawBlob
     const url = URL.createObjectURL(keyedBlob)
     const frame: CutFrame = { id: crypto.randomUUID(), timestamp, rawBlob, keyedBlob, url }
     setFrames((prev) => [...prev, frame])
@@ -137,6 +139,13 @@ export default function VideoV2FrameCutter({
       const target = prev.find((f) => f.id === id)
       if (target) URL.revokeObjectURL(target.url)
       return prev.filter((f) => f.id !== id)
+    })
+  }
+
+  function handleDeleteAll() {
+    setFrames((prev) => {
+      prev.forEach((f) => URL.revokeObjectURL(f.url))
+      return []
     })
   }
 
@@ -224,10 +233,17 @@ export default function VideoV2FrameCutter({
           )}
         </Space>
 
-        <Typography.Text type="secondary">
-          {frames.length} frame{frames.length === 1 ? '' : 's'} cut — {recommendedFrameCount(state)} recommended for{' '}
-          {state}
-        </Typography.Text>
+        <Space>
+          <Typography.Text type="secondary">
+            {frames.length} frame{frames.length === 1 ? '' : 's'} cut — {recommendedFrameCount(state)} recommended for{' '}
+            {state}
+          </Typography.Text>
+          {frames.length > 0 && (
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={handleDeleteAll}>
+              Delete all frames
+            </Button>
+          )}
+        </Space>
 
         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
           {frames.map((frame, index) => (

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Alert, Button, Card, Modal, Progress, Space, Typography, Upload, message } from 'antd'
-import { UploadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, UploadOutlined } from '@ant-design/icons'
 import type { Character2Sheet, ImageRef } from './useCharacter2Sheet'
 import { sameRef } from './useCharacter2Sheet'
 import GridBoundaryOverlay2 from '../../lib/GridBoundaryOverlay2'
@@ -15,8 +15,19 @@ interface PickSheetCardProps {
 
 /** The grid-alignment card: drag lines, add/remove rows/cols, and slice — feeds the DirectionVideosCard rendered elsewhere in the page. */
 export default function PickSheetCard({ imageUrl, flow2RequestId, onUpscaled, sheet }: PickSheetCardProps) {
-  const { grid, sliced, pickerTarget, setPickerTarget, uploadedCanvases, rowPoseRef, setPoseRef, handleSlice, handleUploadForPicker } =
-    sheet
+  const {
+    grid,
+    sliced,
+    pickerTarget,
+    setPickerTarget,
+    uploadedCanvases,
+    rowPoseRef,
+    setPoseRef,
+    handleSlice,
+    handleUploadForPicker,
+    downloadingSliced,
+    handleDownloadAllSliced,
+  } = sheet
 
   const [upscaling, setUpscaling] = useState<'2K' | '4K' | null>(null)
   const [upscaleProgress, setUpscaleProgress] = useState<JobProgress | null>(null)
@@ -73,6 +84,9 @@ export default function PickSheetCard({ imageUrl, flow2RequestId, onUpscaled, sh
           </Button>
           <Button type="primary" onClick={handleSlice} disabled={!grid.rowBoundaries || !grid.colBoundaries}>
             Slice grid
+          </Button>
+          <Button icon={<DownloadOutlined />} loading={downloadingSliced} onClick={handleDownloadAllSliced} disabled={!sliced}>
+            Download all sliced images (.zip)
           </Button>
         </Space>
 

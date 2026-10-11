@@ -1,6 +1,13 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Input, Modal, Progress, Select, Space, Tag, message } from 'antd'
-import { DownloadOutlined, EditOutlined, ScissorOutlined, StopOutlined, VideoCameraOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Input, Modal, Progress, Select, Space, Tag, Upload, message } from 'antd'
+import {
+  DownloadOutlined,
+  EditOutlined,
+  ScissorOutlined,
+  StopOutlined,
+  UploadOutlined,
+  VideoCameraOutlined,
+} from '@ant-design/icons'
 import type { Direction8 } from '../../types'
 import { DIRECTION8_ORDER } from '../../types'
 import type { Character2Sheet, Character2Pose, VideoCellKey } from './useCharacter2Sheet'
@@ -37,6 +44,7 @@ export default function DirectionVideosCard({ sheet }: DirectionVideosCardProps)
     setPickerTarget,
     stopVideoForCell,
     generateVideoForCell,
+    uploadVideoForCell,
     handleGenerateAllVideos,
     handleDownloadAllZip,
     getEffectivePrompt,
@@ -145,6 +153,24 @@ export default function DirectionVideosCard({ sheet }: DirectionVideosCardProps)
                             Stop
                           </Button>
                         )}
+                        <Upload
+                          accept="video/*"
+                          maxCount={1}
+                          showUploadList={false}
+                          disabled={!direction || videoState.status === 'generating'}
+                          beforeUpload={(file) => {
+                            uploadVideoForCell(row, pose, file)
+                            return false
+                          }}
+                        >
+                          <Button
+                            size="small"
+                            icon={<UploadOutlined />}
+                            disabled={!direction || videoState.status === 'generating'}
+                          >
+                            Upload {pose} video
+                          </Button>
+                        </Upload>
                         <Button size="small" icon={<EditOutlined />} onClick={() => openPromptEditor(row, pose)}>
                           Edit prompt{customPrompts[key] !== undefined ? ' *' : ''}
                         </Button>

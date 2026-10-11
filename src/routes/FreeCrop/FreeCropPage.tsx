@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Checkbox, Empty, Slider, Space, Tabs, Typography, Upload } from 'antd'
+import { Button, Card, Checkbox, Empty, InputNumber, Slider, Space, Tabs, Typography, Upload } from 'antd'
 import { PauseCircleOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons'
 import { useFreeCropBoxes } from './useFreeCropBoxes'
 import FreeCropEditor from './FreeCropEditor'
 import FreeCropGroupPreview from './FreeCropGroupPreview'
+import GridSlicePage from './GridSlicePage'
+import SprPage from './SprPage'
 import type { ChromaKeyColor } from '../../lib/imageProcessing'
 
 const CHROMA_KEY_OPTIONS: { label: string; value: ChromaKeyColor }[] = [
@@ -72,6 +74,31 @@ export default function FreeCropPage() {
   return (
     <div>
       <Typography.Title level={3}>Free Crop</Typography.Title>
+      <Tabs
+        items={[
+          {
+            key: 'free-crop',
+            label: 'Free Crop',
+            children: renderFreeCrop(),
+          },
+          {
+            key: 'grid-slice',
+            label: 'Grid Slice',
+            children: <GridSlicePage />,
+          },
+          {
+            key: 'spr',
+            label: 'SPR',
+            children: <SprPage />,
+          },
+        ]}
+      />
+    </div>
+  )
+
+  function renderFreeCrop() {
+    return (
+    <div>
       <Typography.Paragraph type="secondary">
         Upload sprite sheet images or animated GIFs, draw arbitrary rectangular boxes, group boxes into animations
         (even across different uploaded sources), and export cropped frames or per-group sprite strips.
@@ -91,6 +118,38 @@ export default function FreeCropPage() {
                 onChange={(values) => freeCrop.setChromaKeyColors(values as ChromaKeyColor[])}
               />
             </Space>
+            <Space size="small">
+              <Typography.Text type="secondary">Output size</Typography.Text>
+              <InputNumber
+                size="small"
+                min={1}
+                placeholder="Width"
+                value={freeCrop.exportWidth ?? undefined}
+                onChange={(value) => freeCrop.setExportWidth(value ?? null)}
+                style={{ width: 90 }}
+              />
+              <Typography.Text type="secondary">x</Typography.Text>
+              <InputNumber
+                size="small"
+                min={1}
+                placeholder="Height"
+                value={freeCrop.exportHeight ?? undefined}
+                onChange={(value) => freeCrop.setExportHeight(value ?? null)}
+                style={{ width: 90 }}
+              />
+              <Button
+                size="small"
+                onClick={() => {
+                  freeCrop.setExportWidth(null)
+                  freeCrop.setExportHeight(null)
+                }}
+              >
+                Reset
+              </Button>
+            </Space>
+            <Checkbox checked={freeCrop.exportFlip} onChange={(e) => freeCrop.setExportFlip(e.target.checked)}>
+              Flip horizontally
+            </Checkbox>
             <Button
               type="primary"
               loading={freeCrop.exporting}
@@ -196,5 +255,6 @@ export default function FreeCropPage() {
         </>
       )}
     </div>
-  )
+    )
+  }
 }
